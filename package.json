@@ -7,6 +7,8 @@
   "author": "souljasec (https://github.com/souljasec)",
   "scripts": {
     "dev": "astro dev --host --port 4330",
+    "start": "npm run db:migrate:local && astro build && wrangler dev --ip 0.0.0.0 --port 8787",
+    "db:backup:local": "mkdir -p backups && wrangler d1 export DB --local --output backups/local-$(date +%Y-%m-%d-%H%M).sql",
     "build": "astro build",
     "preview": "astro build && wrangler dev",
     "deploy": "astro build && wrangler deploy",
