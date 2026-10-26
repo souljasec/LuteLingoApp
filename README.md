@@ -7,6 +7,8 @@ Phone-first reading app for Vietnamese learners of English. Students read Englis
 - **License:** [AGPL-3.0-or-later](LICENSE): free to use, change and self-host
 - **Based on:** [Lute v3](https://github.com/LuteOrg/lute-v3) (MIT), see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
 
+> LuteLingoApp is an independent project based on Lute v3. It is not affiliated with or endorsed by the Lute project or its authors.
+
 ---
 
 ## For students
