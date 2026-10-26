@@ -388,7 +388,7 @@ describe('security', { concurrency: false }, () => {
     const page = await admin.text(`/admin/students/${c.id()}`);
     assert.ok(!page.includes(`secretword${RUN}`) && !page.includes(`bí mật ${RUN}`), 'no saved words');
     assert.ok(!page.includes(title), 'no text titles');
-    assert.match(page, /<dt[^>]*>1<\/dt><dd[^>]*>(texts finished|bài đã đọc xong)/, 'finished count shown');
+    assert.match(page, /<dt[^>]*>1<\/dt><dd[^>]*>(texts finished|bài đã đọc xong|bacaan selesai)/, 'finished count shown');
   });
 
   test('J3 class categories limit the library; any unlimited class shows everything', { skip: !up && 'dev server not running' }, async () => {

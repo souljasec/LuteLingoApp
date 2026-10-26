@@ -1,10 +1,6 @@
 // Interface strings. To add a language: add its code to LANGS and INTL and a dictionary with the same keys.
-import { locale } from '../brand/locale.ts';
-
-const ALL = { vi: 'Tiếng Việt', id: 'Bahasa Indonesia', en: 'English' } as const;
-export type Lang = keyof typeof ALL;
-/** Interface languages this copy offers: the language it translates into, and English. */
-export const LANGS = { [locale.translateTo]: ALL[locale.translateTo], en: ALL.en } as Partial<Record<Lang, string>>;
+export const LANGS = { vi: 'Tiếng Việt', id: 'Bahasa Indonesia', en: 'English' } as const;
+export type Lang = keyof typeof LANGS;
 export const isLang = (s: unknown): s is Lang => typeof s === 'string' && s in LANGS;
 /** Date formatting locale per interface language. */
 export const INTL: Record<Lang, string> = { vi: 'vi-VN', id: 'id-ID', en: 'en-GB' };
