@@ -346,6 +346,12 @@ Keep `storagePrefix` once the app is in use: changing it resets students' saved 
 
 ## Free knowledge for everyone
 
+> ٱلَّذِى عَلَّمَ بِٱلْقَلَمِ ﴿٤﴾ عَلَّمَ ٱلْإِنسَـٰنَ مَا لَمْ يَعْلَمْ ﴿٥﴾
+>
+> “Who taught by the pen — Taught man that which he knew not.”
+>
+> — The Quran, Surah al-ʿAlaq 96:4–5 (Sahih International). From the very first revelation, and written on the dome of the Nation's Library in Ankara.
+
 We believe in open source and free knowledge for everyone. Learning tools should not be locked away, so this app is free for anyone to use, study, change and share.
 
 **You can:**
@@ -365,7 +371,7 @@ We believe in open source and free knowledge for everyone. Learning tools should
 - Change the license to a different one
 - Expect a warranty: it comes "as is"
 
-The app's **About** page (`/about`, linked from the login screen and Settings) says the same to students and teachers in a short letter about free knowledge, names the developer, and links to this repository.
+The app's **About** page (`/about`, linked from the login screen and Settings) says the same to students and teachers in a short letter about free knowledge, in the interface language. It opens with this verse in Arabic and in a published translation (Sahih International in English, Kementerian Agama RI in Indonesian, Hasan Abdul-Karim in Vietnamese), names the developer, and links to this repository.
 
 ## License
 
