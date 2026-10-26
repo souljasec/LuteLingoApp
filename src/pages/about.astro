@@ -1,0 +1,37 @@
+---
+import App from '../layouts/App.astro';
+import { brand } from '../brand/brand';
+const { t, user } = Astro.locals;
+const REPO = 'https://github.com/souljasec/LuteLingoApp';
+---
+
+<App title={t('about.title')} tabs={false} back={user ? '/account' : '/login'}>
+  <div class="prose" lang="en">
+    <p>{brand.name} runs on <a href={REPO} target="_blank" rel="noopener">LuteLingoApp</a>, a free and open-source app for reading English: tap any word to see its meaning, hear it spoken, and keep the words you are learning.</p>
+
+    <h2>Developer</h2>
+    <p>LuteLingoApp is made by <a href="https://github.com/souljasec" target="_blank" rel="noopener">souljasec</a>. The full source code is on GitHub: <a href={REPO} target="_blank" rel="noopener">github.com/souljasec/LuteLingoApp</a>. Ideas, bug reports and help are welcome there.</p>
+
+    <h2>A letter about free knowledge</h2>
+    <figure class="quote">
+      <blockquote>“Who taught by the pen — taught man that which he knew not.”</blockquote>
+      <figcaption>The Quran, Surah al-ʿAlaq 96:4–5 (Sahih International). From the very first revelation, and written on the dome of the Nation's Library in Ankara.</figcaption>
+    </figure>
+    <p>Dear students and teachers,</p>
+    <p>Knowledge is the one thing that grows when you give it away. A word you learn today can help you read a book tomorrow, and a book can open a door to the whole world. That door should not stay closed because a school is small, far from the city, or has no money for expensive software.</p>
+    <p>That is why this app is free. It has no ads, and it does not sell your data. Its code is open: anyone can read how it works, host a copy for their own school, translate it, and make it better.</p>
+    <p>The licence keeps it that way. If someone changes the app and offers it to others, they must share their changes too, so the next learner gets the same freedom you have.</p>
+    <p>So please learn as much as you can, and then pass it on. Help a classmate with a word, teach a younger brother or sister, share a good text with your teacher. That is how knowledge stays free.</p>
+    <p>With respect,<br />souljasec</p>
+
+    <h2>Licence and credits</h2>
+    <p>LuteLingoApp is free software under the <a href={`${REPO}/blob/main/LICENSE`} target="_blank" rel="noopener">GNU AGPL-3.0</a>. Its reading engine is based on <a href="https://github.com/LuteOrg/lute-v3" target="_blank" rel="noopener">Lute v3</a> (MIT). It is an independent project and is not affiliated with the Lute project.</p>
+  </div>
+</App>
+
+<style>
+  .prose h2 { font-size: 1.125rem; margin: 1.5rem 0 0.5rem; }
+  .quote { margin: 0 0 1.25rem; padding: 0.25rem 0 0.25rem 1rem; border-left: 3px solid var(--accent); }
+  .quote blockquote { margin: 0; font: 500 1.125rem/1.45 var(--font-display); }
+  .quote figcaption { margin-top: 0.4rem; font-size: 0.875rem; color: var(--ink-mute); }
+</style>

@@ -3,7 +3,7 @@ import { getUser } from './lib/auth.ts';
 import { isLang, translator } from './lib/i18n.ts';
 import { locale } from './brand/locale.ts';
 
-const PUBLIC = ['/login', '/signup', '/privacy', '/lang'];
+const PUBLIC = ['/login', '/signup', '/privacy', '/about', '/lang'];
 
 export const onRequest = defineMiddleware(async (ctx, next) => {
   // Build assets (fonts, scripts) are public. In production Cloudflare serves them before the Worker runs.

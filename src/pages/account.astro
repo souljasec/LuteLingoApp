@@ -137,7 +137,7 @@ const myGoal = (await env.DB.prepare('SELECT daily_goal FROM users WHERE id = ?'
   <form method="post" action="/logout">
     <button class="btn quiet block">{t('logout')}</button>
   </form>
-  <p class="hint" style="margin-top:1rem"><a href="/privacy">{t('privacy.title')}</a></p>
+  <p class="hint" style="margin-top:1rem"><a href="/about">{t('about.title')}</a> · <a href="/privacy">{t('privacy.title')}</a></p>
   <p class="hint"><Fragment set:html={t('credit')} /></p>
 </App>
 
