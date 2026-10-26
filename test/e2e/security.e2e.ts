@@ -417,7 +417,7 @@ describe('security', { concurrency: false }, () => {
   });
 
   test('T1 theme is saved per account and only known themes are accepted', { skip: !up && 'dev server not running' }, async () => {
-    const form = { ui_lang: 'vi', text_size: 'medium', speech_rate: 'normal', daily_goal: '20' };
+    const form = { ui_lang: 'en', text_size: 'medium', speech_rate: 'normal', daily_goal: '20' };
     await bob.req('/account', { form: { ...form, theme: 'dim' } });
     assert.match(await bob.text('/'), /data-theme="dim"/);
     assert.match(await alice.text('/'), /data-theme="light"/);
