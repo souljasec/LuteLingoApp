@@ -1,0 +1,231 @@
+---
+import { env } from 'cloudflare:workers';
+import App from '../../../layouts/App.astro';
+import Icon from '../../../components/Icon.astro';
+import XpChart from '../../../components/XpChart.astro';
+import { classInsights } from '../../../lib/insights.ts';
+import { fmtDate } from '../../../lib/admin.ts';
+import { joinCode } from '../../../lib/crypto.ts';
+
+const { t, lang } = Astro.locals;
+const id = Number(Astro.params.id);
+const cls = await env.DB.prepare('SELECT id, name, join_code FROM classes WHERE id = ?')
+  .bind(id)
+  .first<{ id: number; name: string; join_code: string }>();
+if (!cls) return Astro.redirect('/admin');
+
+let error = '';
+if (Astro.request.method === 'POST') {
+  const f = await Astro.request.formData();
+  const action = f.get('action');
+  if (action === 'rename') {
+    const name = String(f.get('name') ?? '').trim().slice(0, 80);
+    if (name) await env.DB.prepare('UPDATE classes SET name = ? WHERE id = ?').bind(name, id).run();
+  } else if (action === 'code') {
+    for (let i = 0; i < 5; i++) {
+      const r = await env.DB.prepare('UPDATE OR IGNORE classes SET join_code = ? WHERE id = ?').bind(joinCode(), id).run();
+      if (r.meta.changes) break;
+    }
+  } else if (action === 'add') {
+    const email = String(f.get('email') ?? '').trim().toLowerCase();
+    const u = await env.DB.prepare('SELECT id FROM users WHERE email = ?').bind(email).first<{ id: number }>();
+    if (!u) error = t('admin.noStudent');
+    else await env.DB.prepare('INSERT OR IGNORE INTO class_members (class_id, user_id) VALUES (?, ?)').bind(id, u.id).run();
+  } else if (action === 'remove') {
+    await env.DB.prepare('DELETE FROM class_members WHERE class_id = ? AND user_id = ?').bind(id, Number(f.get('user'))).run();
+  } else if (action === 'cats') {
+    const cats = f.getAll('cat').map(String).slice(0, 50);
+    await env.DB.batch([
+      env.DB.prepare('DELETE FROM class_categories WHERE class_id = ?').bind(id),
+      ...cats.map((c) => env.DB.prepare('INSERT OR IGNORE INTO class_categories (class_id, category) VALUES (?, ?)').bind(id, c.slice(0, 40))),
+    ]);
+  } else if (action === 'delete') {
+    await env.DB.prepare('DELETE FROM classes WHERE id = ?').bind(id).run();
+    return Astro.redirect('/admin');
+  }
+  if (!error) return Astro.redirect(`/admin/classes/${id}`);
+}
+
+const fresh = (await env.DB.prepare('SELECT name, join_code FROM classes WHERE id = ?').bind(id).first<{ name: string; join_code: string }>())!;
+const { students, totals, days, topTexts } = await classInsights(id);
+const attention = students.filter((s) => s.inactive);
+const allCats = (await env.DB.prepare("SELECT DISTINCT category FROM texts WHERE owner_id IS NULL AND visibility = 'all' AND category != '' ORDER BY category").all<{ category: string }>()).results.map((r) => r.category);
+const picked = new Set((await env.DB.prepare('SELECT category FROM class_categories WHERE class_id = ?').bind(id).all<{ category: string }>()).results.map((r) => r.category));
+const topMax = Math.max(1, ...topTexts.map((x) => x.n));
+---
+
+<App title={fresh.name} back="/admin">
+  <a slot="action" class="action" href={`/leaderboard?class=${id}`} aria-label={t('board.title')}><Icon name="trophy" /></a>
+
+  <dl class="kpis">
+    <div class="card"><dt>{totals.active}<small>/{totals.students}</small></dt><dd>{t('ins.activeOf')}</dd></div>
+    <div class="card"><dt>{totals.xp}</dt><dd>{t('ins.xpWeek')}</dd></div>
+    <div class="card"><dt>{totals.words}</dt><dd>{t('ins.wordsWeek')}</dd></div>
+    <div class="card"><dt>{totals.texts}</dt><dd>{t('ins.textsWeek')}</dd></div>
+  </dl>
+
+  <XpChart students={students} days={days} />
+
+  {
+    attention.length > 0 && (
+      <section class="attention card">
+        <h2><span class="flag" aria-hidden="true">!</span>{t('ins.attention')} · {attention.length}</h2>
+        <p class="hint">{t('ins.attentionHint')}</p>
+        <p class="names">
+          {attention.map((s, i) => (
+            <>
+              <a href={`/admin/students/${s.id}`}>{s.name}</a>
+              <span class="when"> ({fmtDate(s.last_active_at, lang) ?? t('admin.never')})</span>
+              {i < attention.length - 1 && ', '}
+            </>
+          ))}
+        </p>
+      </section>
+    )
+  }
+
+  <h2 class="sec">{t('ins.studentsTitle')}</h2>
+  {error && <p class="error" role="alert">{error}</p>}
+  <form method="post" class="row">
+    <input type="email" name="email" placeholder="email@example.com" aria-label={t('admin.addStudent')} required inputmode="email" />
+    <button class="btn" name="action" value="add">{t('admin.add')}</button>
+  </form>
+  {students.length === 0 && <p class="muted">{t('admin.noStudents')}</p>}
+  <ol class="students">
+    {
+      students.map((s) => (
+        <li class="card">
+          <a href={`/admin/students/${s.id}`} class="who">
+            <span class="name">
+              {s.name}
+              {s.inactive && <span class="badge" title={t('ins.attentionHint')}>! {t('ins.attention')}</span>}
+            </span>
+            <span class="stats">
+              <span class:list={['streak', { cold: !s.streak }]}><Icon name="flame" size={15} />{s.streak}</span>
+              <span><b>{s.xp_week}</b> XP</span>
+              <span><b>{s.words_week}</b> {t('ins.newWords')}</span>
+              <span><b>{s.known}</b> {t('library.known')}</span>
+              <span><b>{s.finished}</b> {t('admin.finished')}</span>
+            </span>
+          </a>
+          <form method="post">
+            <input type="hidden" name="action" value="remove" />
+            <input type="hidden" name="user" value={s.id} />
+            <button class="rm" aria-label={`${t('admin.remove')}: ${s.name}`} title={t('admin.remove')}><Icon name="close" size={18} /></button>
+          </form>
+        </li>
+      ))
+    }
+  </ol>
+
+  {
+    topTexts.length > 0 && (
+      <section class="popular card">
+        <h2>{t('ins.topTexts')}</h2>
+        <ol>
+          {topTexts.map((x) => (
+            <li>
+              <span class="tt">{x.title}</span>
+              <span class="meter" aria-hidden="true"><span style={`width:${(x.n / topMax) * 100}%`}></span></span>
+              <span class="tn">{x.n}</span>
+            </li>
+          ))}
+        </ol>
+      </section>
+    )
+  }
+
+  <form method="post" class="cats card">
+    <h2>{t('admin.cats')}</h2>
+    <p class="hint">{t('admin.catsHint')}</p>
+    <div class="boxes">
+      {allCats.map((c) => (
+        <label><input type="checkbox" name="cat" value={c} checked={picked.has(c)} /> {c}</label>
+      ))}
+    </div>
+    <button class="btn small" name="action" value="cats">{t('admin.catsSave')}</button>
+  </form>
+
+  <section class="code">
+    <p class="eyebrow">{t('admin.code')}</p>
+    <p class="big"><code>{fresh.join_code}</code></p>
+    <p class="hint">{t('admin.codeHint')}</p>
+    <form method="post"><button class="btn small quiet" name="action" value="code">{t('admin.newCode')}</button></form>
+  </section>
+
+  <details class="manage">
+    <summary>{t('admin.rename')} / {t('admin.deleteClass')}</summary>
+    <form method="post" class="row">
+      <input type="text" name="name" value={fresh.name} aria-label={t('admin.className')} required maxlength="80" />
+      <button class="btn quiet" name="action" value="rename">{t('admin.rename')}</button>
+    </form>
+    <form method="post" data-confirm={t('admin.deleteClassConfirm')}>
+      <button class="btn danger block" name="action" value="delete">{t('admin.deleteClass')}</button>
+    </form>
+  </details>
+</App>
+
+<style>
+  .kpis { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.5rem; margin: 0.25rem 0 0.75rem; }
+  @media (min-width: 34rem) { .kpis { grid-template-columns: repeat(4, 1fr); } }
+  .kpis div { padding: 0.75rem 0.875rem; }
+  .kpis dt { font: 700 1.75rem/1 var(--font-display); color: var(--ink); letter-spacing: -0.02em; }
+  .kpis dt small { font-size: 1rem; color: var(--ink-mute); font-weight: 500; }
+  .kpis dd { margin: 0.35rem 0 0; font-size: 0.8125rem; color: var(--ink-mute); line-height: 1.3; }
+
+  .attention { padding: 0.75rem 1rem; margin-bottom: 1rem; border-color: var(--warn-line); background: var(--warn-bg); }
+  .attention h2 { font-size: 1rem; display: flex; align-items: center; gap: 0.5rem; color: var(--warn-ink); }
+  .flag { display: inline-grid; place-items: center; width: 1.25rem; height: 1.25rem; border-radius: 50%; background: var(--vermillion); color: var(--paper); font: 700 0.8125rem/1 var(--font-display); }
+  .attention .hint { margin: 0.25rem 0 0.4rem; }
+  .names { margin: 0; line-height: 1.6; }
+  .when { color: var(--ink-mute); font-size: 0.875rem; }
+
+  .sec { font-size: 1.0625rem; margin: 1.5rem 0 0.75rem; }
+  .row { display: flex; gap: 0.5rem; margin-bottom: 0.75rem; }
+  .row input { flex: 1; min-width: 0; font: 400 1rem/1.4 var(--font-body); padding: 0.7rem 0.875rem; border: 1px solid var(--rule-strong); border-radius: var(--r); background: var(--surface); }
+  .row input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .students { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; }
+  .students li { display: flex; align-items: center; }
+  .who { flex: 1; min-width: 0; display: grid; gap: 0.35rem; padding: 0.75rem 0.25rem 0.75rem 1rem; color: var(--ink); text-decoration: none; }
+  .name { font: 500 1.0625rem/1.3 var(--font-display); display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+  .badge { font: 600 0.6875rem/1.4 var(--font-display); letter-spacing: 0.04em; text-transform: uppercase; color: var(--warn-ink); background: var(--warn-chip); padding: 0.1rem 0.4rem; border-radius: 3px; }
+  .stats { display: flex; flex-wrap: wrap; gap: 0.25rem 0.875rem; font-size: 0.8125rem; color: var(--ink-mute); }
+  .stats b { color: var(--ink); font-weight: 600; }
+  .streak { display: inline-flex; align-items: center; gap: 0.15rem; color: var(--streak); font-weight: 600; }
+  .streak.cold { color: var(--ink-mute); font-weight: 500; }
+  .rm { width: 44px; height: 44px; display: grid; place-items: center; border: 0; background: none; color: var(--ink-mute); cursor: pointer; }
+
+  /* Not ".top": that is the app header's class. */
+  .popular { padding: 0.875rem 1rem; margin-top: 1.25rem; }
+  .popular h2 { font-size: 1rem; margin-bottom: 0.75rem; }
+  .popular ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.75rem; }
+  .popular li { display: grid; grid-template-columns: 1fr 2rem; align-items: center; gap: 0.25rem 0.75rem; font-size: 0.9375rem; }
+  .tt { grid-column: 1 / -1; line-height: 1.35; }
+  .meter { height: 6px; background: var(--paper-dim); border-radius: 3px; overflow: hidden; }
+  .meter span { display: block; height: 100%; background: var(--chart); border-radius: 3px; }
+  .tn { text-align: right; font-weight: 600; }
+
+  .cats { padding: 0.875rem 1rem; margin-top: 1.25rem; }
+  .cats h2 { font-size: 1rem; }
+  .cats .hint { margin: 0.25rem 0 0.5rem; }
+  .boxes { display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; margin-bottom: 0.75rem; }
+  .boxes label { display: flex; align-items: center; gap: 0.4rem; min-height: 44px; cursor: pointer; }
+  .boxes input { width: 1.125rem; height: 1.125rem; accent-color: var(--accent); }
+
+  .code { text-align: center; padding: 1rem; margin: 1.5rem 0 0; border: 1px dashed var(--rule-strong); border-radius: var(--r); }
+  .code .eyebrow { margin: 0; }
+  .big { margin: 0.25rem 0; }
+  .big code { font: 700 1.75rem/1.2 ui-monospace, monospace; letter-spacing: 0.15em; color: var(--accent); }
+  .code .hint { margin: 0 0 0.75rem; }
+  .manage { margin-top: 1.5rem; }
+  .manage summary { cursor: pointer; color: var(--ink-mute); min-height: 44px; display: flex; align-items: center; }
+  .manage[open] summary { margin-bottom: 0.75rem; }
+</style>
+
+<script>
+  document.querySelectorAll<HTMLFormElement>('form[data-confirm]').forEach((f) =>
+    f.addEventListener('submit', (e) => {
+      if (!confirm(f.dataset.confirm!)) e.preventDefault();
+    }),
+  );
+</script>

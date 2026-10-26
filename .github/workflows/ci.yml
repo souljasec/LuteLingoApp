@@ -1,0 +1,29 @@
+name: CI
+on: [push, pull_request]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: npm }
+      - run: npm ci
+      - run: npm test
+      - run: npx astro sync && npx tsc --noEmit -p .
+      - run: npx astro build
+
+  security:
+    # Threat-model tests (THREATS.md) against a running app with a fresh local D1.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: npm }
+      - run: npm ci
+      - run: npx wrangler d1 migrations apply DB --local
+      - name: Start app
+        run: |
+          npx astro dev --port 4330 > dev.log 2>&1 &
+          for i in $(seq 1 60); do curl -sf http://localhost:4330/login > /dev/null && exit 0; sleep 2; done
+          cat dev.log; exit 1
+      - run: npm run test:e2e

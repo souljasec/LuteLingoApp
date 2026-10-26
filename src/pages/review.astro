@@ -1,0 +1,195 @@
+---
+import { env } from 'cloudflare:workers';
+import App from '../layouts/App.astro';
+import Icon from '../components/Icon.astro';
+
+const { t } = Astro.locals;
+const user = Astro.locals.user!;
+
+// Up to 20 due learning terms, oldest due first, with their base word's meaning if linked.
+const { results: cards } = await env.DB.prepare(
+  `SELECT w.term, w.translation, w.status, w.parent, w.sentence, p.translation AS parent_t
+   FROM saved_words w LEFT JOIN saved_words p ON p.user_id = w.user_id AND p.term = w.parent AND w.parent != ''
+   WHERE w.user_id = ? AND w.status BETWEEN 1 AND 5 AND w.due_at <= unixepoch()
+   ORDER BY w.due_at, w.status LIMIT 20`,
+)
+  .bind(user.id)
+  .all<{ term: string; translation: string; status: number; parent: string; sentence: string; parent_t: string | null }>();
+
+const config = { rate: user.speech_rate, cards, i18n: { noMeaning: t('review.noMeaning'), done: t('xp.reviewDone') } };
+---
+
+<App title={t('review.title')} back="/words">
+  {
+    cards.length === 0 ? (
+      <div class="empty card">
+        <p>{t('review.none')}</p>
+        <a class="btn" href="/">{t('review.back')}</a>
+      </div>
+    ) : (
+      <div id="review" data-config={JSON.stringify(config)}>
+        <div class="bar" aria-hidden="true"><span id="bar-fill"></span></div>
+        <p class="count"><span id="pos">1</span> / {cards.length}</p>
+
+        <section class="flash card" aria-live="polite">
+          <span id="lvl" class="lvl"></span>
+          <div class="front">
+            <button id="say" class="icon-btn" aria-label={t('read.listen')}><Icon name="speaker" /></button>
+            <p id="term" lang="en"></p>
+            <p id="ctx" class="ctx" lang="en" hidden></p>
+          </div>
+          <div id="back" hidden>
+            <p id="meaning"></p>
+            <p id="parent" class="parent" hidden></p>
+          </div>
+        </section>
+
+        <button id="show" class="btn block">{t('review.show')}</button>
+        <div id="answer" class="answer" hidden>
+          <button id="again" class="btn quiet">{t('review.again')}</button>
+          <button id="good" class="btn">{t('review.good')}</button>
+        </div>
+        <p class="hint">{t('review.hint')}</p>
+      </div>
+    )
+  }
+  <div id="done" class="empty card" hidden>
+    <p class="big"><Icon name="check" size={28} /></p>
+    <p>{t('review.done')}</p>
+    <a class="btn" href="/">{t('review.back')}</a>
+  </div>
+</App>
+
+<style>
+  .bar { height: 4px; background: var(--paper-dim); border-radius: 2px; overflow: hidden; margin-top: 0.25rem; }
+  #bar-fill { display: block; height: 100%; width: 0; background: var(--accent); transition: width 0.2s; }
+  .count { text-align: right; color: var(--ink-mute); font-size: 0.875rem; margin: 0.35rem 0 0.75rem; }
+  .flash { position: relative; min-height: 15rem; padding: 2rem 1.25rem 1.5rem; display: grid; align-content: center; gap: 1rem; text-align: center; margin-bottom: 1rem; }
+  .lvl { position: absolute; top: 0.75rem; left: 0.75rem; display: grid; place-items: center; width: 2rem; height: 2rem; border-radius: var(--r); font: 700 0.9375rem/1 var(--font-display); }
+  .front { display: grid; justify-items: center; gap: 0.75rem; }
+  #term { margin: 0; font: 600 2.25rem/1.2 var(--font-body); word-break: break-word; }
+  .ctx { margin: 0; max-width: 26rem; color: var(--ink-mute); font-size: 1rem; line-height: 1.5; }
+  .ctx :global(mark) { background: var(--saffron); color: var(--on-saffron); padding: 0 0.15em; border-radius: 2px; }
+  #back { border-top: 1px solid var(--rule); padding-top: 1rem; }
+  #back[hidden] { display: none; }
+  #meaning { margin: 0; font: 700 1.75rem/1.25 var(--font-display); color: var(--accent); word-break: break-word; }
+  #meaning.none { color: var(--ink-mute); font-size: 1.125rem; font-weight: 500; }
+  .parent { margin: 0.5rem 0 0; color: var(--ink-mute); }
+  .answer { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+  .answer[hidden] { display: none; }
+  .hint { text-align: center; margin-top: 1rem; }
+  .empty { padding: 2rem 1.25rem; text-align: center; display: grid; gap: 1rem; justify-items: center; margin-top: 1rem; }
+  .empty[hidden] { display: none; }
+  .empty p { margin: 0; }
+  .big { color: var(--accent); }
+</style>
+
+<script>
+  import { pickVoice } from '../scripts/voice.ts';
+  import { celebrate, xpFeedback } from '../scripts/celebrate.ts';
+
+  const root = document.getElementById('review');
+  if (root) {
+    const $ = (id: string) => document.getElementById(id)!;
+    const config = JSON.parse(root.dataset.config!) as {
+      rate: number;
+      cards: { term: string; translation: string; status: number; parent: string; sentence: string; parent_t: string | null }[];
+      i18n: { noMeaning: string; done: string };
+    };
+    let i = 0;
+    let fetched = ''; // meaning looked up for a card that had none
+
+    const say = (text: string) => {
+      const s = window.speechSynthesis;
+      if (!s) return;
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = 'en-US';
+      u.rate = config.rate;
+      const v = pickVoice();
+      if (v) u.voice = v;
+      s.cancel();
+      s.speak(u);
+    };
+
+    /** The source sentence with the term marked, built from text nodes only (no HTML). */
+    function context(el: HTMLElement, sentence: string, term: string) {
+      el.replaceChildren();
+      el.hidden = !sentence;
+      const at = sentence.toLowerCase().indexOf(term);
+      if (at < 0) return void el.append(sentence);
+      const mark = document.createElement('mark');
+      mark.textContent = sentence.slice(at, at + term.length);
+      el.append(sentence.slice(0, at), mark, sentence.slice(at + term.length));
+    }
+
+    function render() {
+      const c = config.cards[i];
+      $('pos').textContent = String(i + 1);
+      $('bar-fill').style.width = (i / config.cards.length) * 100 + '%';
+      $('term').textContent = c.term;
+      context($('ctx'), c.sentence, c.term);
+      $('lvl').textContent = String(c.status);
+      $('lvl').className = `lvl st${c.status}`;
+      $('back').hidden = true;
+      $('answer').hidden = true;
+      $('show').hidden = false;
+      fetched = '';
+    }
+
+    async function reveal() {
+      const c = config.cards[i];
+      const m = $('meaning');
+      $('back').hidden = false;
+      $('show').hidden = true;
+      $('answer').hidden = false;
+      m.className = '';
+      m.textContent = c.translation || '…';
+      const p = $('parent');
+      p.hidden = !c.parent;
+      p.textContent = c.parent ? `→ ${c.parent}${c.parent_t ? ': ' + c.parent_t : ''}` : '';
+      say(c.term);
+      if (!c.translation) {
+        // Terms marked before their meaning loaded: look it up now and keep it.
+        try {
+          const r = await fetch('/api/translate?q=' + encodeURIComponent(c.term));
+          const j = r.ok ? await r.json() : null;
+          if (config.cards[i] === c) {
+            fetched = j?.vi ?? '';
+            m.textContent = fetched || config.i18n.noMeaning;
+            if (!fetched) m.className = 'none';
+          }
+        } catch {
+          m.textContent = config.i18n.noMeaning;
+          m.className = 'none';
+        }
+      }
+    }
+
+    async function answer(correct: boolean) {
+      const c = config.cards[i];
+      $('good').setAttribute('disabled', '');
+      $('again').setAttribute('disabled', '');
+      const r = await fetch('/api/review', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ term: c.term, correct, translation: fetched }),
+      });
+      const xp = r.ok ? (await r.json()).xp : undefined;
+      const last = i + 1 >= config.cards.length;
+      if (!last) await xpFeedback(xp);
+      $('good').removeAttribute('disabled');
+      $('again').removeAttribute('disabled');
+      i++;
+      if (i < config.cards.length) return render();
+      root!.hidden = true;
+      $('done').hidden = false;
+      celebrate(config.i18n.done, xp);
+    }
+
+    $('show').addEventListener('click', reveal);
+    $('say').addEventListener('click', () => say(config.cards[i].term));
+    $('good').addEventListener('click', () => answer(true));
+    $('again').addEventListener('click', () => answer(false));
+    render();
+  }
+</script>

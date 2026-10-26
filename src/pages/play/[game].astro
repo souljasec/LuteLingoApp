@@ -1,0 +1,362 @@
+---
+import App from '../../layouts/App.astro';
+import { GAMES, gameWords, type Game } from '../../lib/games.ts';
+
+const { t } = Astro.locals;
+const user = Astro.locals.user!;
+const game = Astro.params.game as Game;
+if (!GAMES.includes(game)) return Astro.redirect('/words');
+
+const words = await gameWords(user, game);
+const config = {
+  game,
+  words,
+  rate: user.speech_rate,
+  i18n: { win: t('games.win'), lose: t('games.lose'), loseHint: t('games.loseHint'), capped: t('games.capped'), lives: t('games.lives') },
+};
+---
+
+<App title={t(`games.${game}`)} tabs={false} back="/words">
+  <div class="game" id="game" data-config={JSON.stringify(config)}>
+    <header class="g-top">
+      <button id="mute" class="g-icon" aria-pressed="false" aria-label={t('games.mute')}>🔊</button>
+      <div class="g-bar" aria-hidden="true"><span id="g-fill"></span></div>
+      <span id="lives" class="lives" role="img" aria-label={`3 ${t('games.lives')}`}><i>❤️</i><i>❤️</i><i>❤️</i></span>
+      <a class="g-icon" href="/words" aria-label={t('games.close')}>✕</a>
+    </header>
+
+    {
+      words.length === 0 ? (
+        <section class="g-end">
+          <p class="big" aria-hidden="true">{t(`games.${game}`).split(' ')[0]}</p>
+          <p>{t(game === 'fill' ? 'games.needFill' : 'games.need')}</p>
+          <a class="btn" href="/">{t('tab.library')}</a>
+        </section>
+      ) : (
+        <>
+          <div id="play" class="play">
+            <h1 class="g-title">{t(`games.${game}`)}</h1>
+            <p class="g-help">{t(`games.${game}Help`)}</p>
+            <p id="combo" class="combo" aria-live="polite"></p>
+            {
+              game === 'match' ? (
+                <div class="board">
+                  <div class="col" id="left" lang="en"></div>
+                  <div class="col" id="right"></div>
+                </div>
+              ) : (
+                <div class="quiz">
+                  {game === 'listen' ? (
+                    <div class="prompt">
+                      <button id="hear" class="hear" aria-label={t('read.listen')}>🔊</button>
+                      <p id="reveal" class="reveal" lang="en" aria-live="polite"></p>
+                    </div>
+                  ) : (
+                    <p id="sentence" class="prompt sentence" lang="en" aria-live="polite"></p>
+                  )}
+                  <div id="choices" class:list={['choices', { en: game === 'fill' }]}></div>
+                </div>
+              )
+            }
+          </div>
+          <section id="end" class="g-end" hidden>
+            <p id="stars" class="stars"></p>
+            <h2 id="end-title"></h2>
+            <p id="end-text"></p>
+            <div class="g-actions">
+              <a class="btn quiet" href="/words">{t('games.close')}</a>
+              <a class="btn" href="">{t('games.again')}</a>
+            </div>
+          </section>
+        </>
+      )
+    }
+  </div>
+</App>
+
+<style>
+  /* Full screen over the app header, with its own colourful background. */
+  .game {
+    position: fixed; inset: 0; z-index: 50; overflow-y: auto;
+    display: flex; flex-direction: column; gap: 0.75rem;
+    padding: calc(env(safe-area-inset-top, 0px) + 0.75rem) 1rem calc(env(safe-area-inset-bottom, 0px) + 1.5rem);
+    background: linear-gradient(160deg, #306e65 0%, #2f6a7c 45%, #365995 100%);
+    color: #fff;
+  }
+  .g-top { display: flex; align-items: center; gap: 0.75rem; max-width: 32rem; width: 100%; margin: 0 auto; }
+  .g-icon { flex: none; width: 44px; height: 44px; display: grid; place-items: center; border: 0; border-radius: 50%; background: rgba(255, 255, 255, 0.16); color: #fff; font-size: 1.125rem; text-decoration: none; cursor: pointer; }
+  .g-icon[aria-pressed='true'] { opacity: 0.6; }
+  .g-bar { flex: 1; height: 12px; border-radius: 6px; background: rgba(255, 255, 255, 0.22); overflow: hidden; }
+  #g-fill { display: block; height: 100%; width: 0; border-radius: 6px; background: #e6cc86; transition: width 0.3s ease-out; }
+  .lives { flex: none; font-size: 1.125rem; letter-spacing: 0.05em; }
+  .lives i { font-style: normal; display: inline-block; transition: opacity 0.3s, transform 0.3s; }
+  .lives i.lost { opacity: 0.25; filter: grayscale(1); transform: scale(0.8); }
+  .g-title { margin: 0.5rem 0 0; text-align: center; font: 700 1.5rem/1.2 var(--font-display); color: #fff; }
+  .g-help { margin: 0; text-align: center; color: rgba(255, 255, 255, 0.92); font-size: 0.9375rem; }
+  .combo { margin: 0; min-height: 1.75rem; text-align: center; font: 700 1.125rem/1.75rem var(--font-display); color: #e6cc86; }
+  .combo.pop { animation: pop 0.3s ease-out; }
+  .play { display: grid; gap: 0.75rem; }
+  .play[hidden] { display: none; }
+  .board, .quiz { display: grid; gap: 0.625rem; max-width: 32rem; width: 100%; margin: 0 auto; }
+  .board { grid-template-columns: 1fr 1fr; }
+  .col { display: grid; gap: 0.625rem; align-content: start; }
+  .play :global(.tile) {
+    min-height: 60px; padding: 0.5rem 0.625rem; border: 2px solid transparent; border-radius: 12px;
+    background: #fff; color: #292d31; font: 600 1rem/1.25 var(--font-body); text-align: center; word-break: break-word; cursor: pointer;
+    box-shadow: 0 3px 0 rgba(0, 0, 0, 0.18); transition: transform 0.12s, background 0.15s, opacity 0.3s;
+  }
+  .play :global(.tile:active) { transform: translateY(2px); box-shadow: 0 1px 0 rgba(0, 0, 0, 0.18); }
+  .play :global(.tile[aria-pressed='true']) { background: #e6cc86; border-color: #292d31; }
+  .play :global(.tile.ok) { background: #cfe4da; border-color: #2f7d5b; }
+  .play :global(.tile.done) { opacity: 0; pointer-events: none; }
+  .play :global(.tile.bad) { background: #f6ddd6; border-color: #c8452a; animation: shake 0.35s; }
+  .prompt { min-height: 9rem; display: grid; place-items: center; align-content: center; gap: 0.5rem; margin-bottom: 0.5rem; padding: 1rem; border-radius: 16px; background: rgba(255, 255, 255, 0.12); }
+  .hear { width: 96px; height: 96px; border: 0; border-radius: 50%; background: #e6cc86; font-size: 2.75rem; cursor: pointer; box-shadow: 0 4px 0 rgba(0, 0, 0, 0.2); }
+  .hear:active { transform: translateY(2px); box-shadow: 0 2px 0 rgba(0, 0, 0, 0.2); }
+  .reveal { margin: 0; min-height: 1.75rem; font: 700 1.375rem/1.3 var(--font-body); }
+  .sentence { display: block; margin-top: 0; padding: 2rem 1.25rem; font: 500 1.25rem/1.6 var(--font-body); text-align: center; } /* flowing text, not grid rows */
+  .sentence :global(.gap) { display: inline-block; min-width: 4.5em; border-bottom: 3px solid #e6cc86; color: #e6cc86; font-weight: 700; }
+  .choices { display: grid; grid-template-columns: 1fr 1fr; gap: 0.625rem; }
+  .g-end { margin: auto; width: min(22rem, 100%); display: grid; gap: 0.75rem; justify-items: center; text-align: center; padding: 1.75rem 1.25rem; border-radius: 16px; background: var(--paper); color: var(--ink); }
+  .g-end[hidden] { display: none; }
+  .g-end p { margin: 0; }
+  .g-end h2 { font-size: 1.625rem; color: var(--accent); }
+  .big { font-size: 3rem; }
+  .stars { font-size: 2.5rem; letter-spacing: 0.1em; }
+  .stars :global(.off) { filter: grayscale(1); opacity: 0.3; }
+  .g-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; width: 100%; }
+  @keyframes shake { 20%, 60% { transform: translateX(-6px); } 40%, 80% { transform: translateX(6px); } }
+  /* Calm version when the phone asks for less motion: colour changes only. */
+  @media (prefers-reduced-motion: reduce) {
+    .play :global(.tile), #g-fill, .lives i { transition: none; }
+    .play :global(.tile.bad), .combo.pop { animation: none; }
+  }
+</style>
+
+<script>
+  import { pickVoice } from '../../scripts/voice.ts';
+  import { brand } from '../../brand/brand';
+  import { xpFeedback } from '../../scripts/celebrate.ts';
+  import { sound, buzz, vibrate } from '../../scripts/game.ts';
+
+  type Word = { t: string; m: string; s?: [string, string, string] };
+  const root = document.getElementById('game')!;
+  const config = JSON.parse(root.dataset.config!) as {
+    game: 'match' | 'listen' | 'fill';
+    words: Word[];
+    rate: number;
+    i18n: Record<'win' | 'lose' | 'loseHint' | 'capped' | 'lives', string>;
+  };
+  const $ = (id: string) => document.getElementById(id)!;
+  const shuffle = <T,>(a: T[]) => a.map((x) => [Math.random(), x] as const).sort((p, q) => p[0] - q[0]).map((p) => p[1]);
+
+  // Mute (remembered on this phone only) silences sounds and spoken words, except the word
+  // in Nghe và chọn: without it there is no game.
+  let muted = false;
+  try { muted = localStorage.getItem(`${brand.storagePrefix}-mute`) === '1'; } catch {}
+  const muteBtn = $('mute');
+  const showMute = () => {
+    muteBtn.textContent = muted ? '🔇' : '🔊';
+    muteBtn.setAttribute('aria-pressed', String(muted));
+  };
+  muteBtn.addEventListener('click', () => {
+    muted = !muted;
+    try { localStorage.setItem(`${brand.storagePrefix}-mute`, muted ? '1' : '0'); } catch {}
+    showMute();
+  });
+  showMute();
+
+  const say = (text: string, always = false) => {
+    const s = window.speechSynthesis;
+    if ((muted && !always) || !s) return;
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'en-US';
+    u.rate = config.rate;
+    const v = pickVoice();
+    if (v) u.voice = v;
+    s.cancel();
+    s.speak(u);
+  };
+
+  // ---- the shared game screen: lives, combo, progress, end ----
+  let lives = 3, combo = 0;
+
+  function hit() {
+    combo++;
+    if (!muted) sound(combo);
+    vibrate(15);
+    const c = $('combo');
+    c.textContent = combo >= 2 ? `Combo ×${combo}` : '';
+    c.classList.remove('pop');
+    void c.offsetWidth; // restart the animation
+    c.classList.add('pop');
+  }
+
+  function miss() {
+    combo = 0;
+    lives--;
+    $('combo').textContent = '';
+    if (!muted) buzz();
+    vibrate([60, 40, 60]);
+    const hearts = $('lives');
+    hearts.querySelectorAll('i').forEach((h, k) => h.classList.toggle('lost', k >= lives));
+    hearts.setAttribute('aria-label', `${lives} ${config.i18n.lives}`);
+  }
+
+  const progress = (done: number, total: number) => ($('g-fill').style.width = (done / total) * 100 + '%');
+
+  const tile = (text: string, onTap: (b: HTMLButtonElement) => void) => {
+    const b = document.createElement('button');
+    b.className = 'tile';
+    b.textContent = text;
+    b.addEventListener('click', () => onTap(b));
+    return b;
+  };
+
+  async function end(won: boolean) {
+    $('play').hidden = true;
+    const stars = won ? lives : 0;
+    $('stars').replaceChildren(
+      ...[0, 1, 2].map((k) => {
+        const s = document.createElement('span');
+        s.textContent = '⭐';
+        if (k >= stars) s.className = 'off';
+        return s;
+      }),
+    );
+    $('stars').setAttribute('aria-label', `${stars}/3 ⭐`);
+    $('end-title').textContent = won ? config.i18n.win : config.i18n.lose;
+    $('end-text').textContent = won ? '' : config.i18n.loseHint;
+    $('end').hidden = false;
+    if (!won) return;
+    // The round's one request: XP (games never change word levels).
+    const r = await fetch('/api/games', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ game: config.game }) });
+    const xp = r.ok ? (await r.json()).xp : undefined;
+    $('end-text').textContent = xp?.gained ? `+${xp.gained} XP` : config.i18n.capped;
+    await xpFeedback(xp);
+  }
+
+  // ---- 🧩 Ghép từ: boards of 5 words ↔ 5 meanings ----
+  function match(words: Word[]) {
+    let matched = 0, board = 0, busy = false;
+    let picked: HTMLButtonElement | null = null;
+
+    const make = (i: number, side: 'l' | 'r') => {
+      const b = tile(side === 'l' ? words[i].t : words[i].m, tap);
+      b.dataset.id = String(i);
+      b.dataset.side = side;
+      b.setAttribute('aria-pressed', 'false');
+      return b;
+    };
+    const deal = () => {
+      const ids = [0, 1, 2, 3, 4].map((k) => board * 5 + k);
+      $('left').replaceChildren(...shuffle(ids).map((i) => make(i, 'l')));
+      $('right').replaceChildren(...shuffle(ids).map((i) => make(i, 'r')));
+    };
+
+    function tap(b: HTMLButtonElement) {
+      if (busy || b.classList.contains('ok')) return;
+      if (b.dataset.side === 'l') say(b.textContent!);
+      if (!picked || picked.dataset.side === b.dataset.side) {
+        picked?.setAttribute('aria-pressed', 'false');
+        picked = picked === b ? null : b;
+        picked?.setAttribute('aria-pressed', 'true');
+        return;
+      }
+      const a = picked;
+      picked = null;
+      a.setAttribute('aria-pressed', 'false');
+      if (a.dataset.id === b.dataset.id) {
+        matched++;
+        hit();
+        [a, b].forEach((x) => x.classList.add('ok'));
+        progress(matched, words.length);
+        setTimeout(() => [a, b].forEach((x) => x.classList.add('done')), 350);
+        if (matched % 5 === 0) {
+          busy = true;
+          setTimeout(() => {
+            busy = false;
+            if (matched === words.length) return end(true);
+            board++;
+            deal();
+          }, 650);
+        }
+      } else {
+        miss();
+        [a, b].forEach((x) => x.classList.add('bad'));
+        busy = true;
+        setTimeout(() => {
+          [a, b].forEach((x) => x.classList.remove('bad'));
+          busy = false;
+          if (lives === 0) end(false);
+        }, 450);
+      }
+    }
+    deal();
+  }
+
+  // ---- 🔊 Nghe và chọn / ✍️ Điền từ: one prompt, 4 choices ----
+  // Listen: hear a word, pick its meaning. Fill: a saved sentence with the word blanked, pick the word.
+  function quiz(words: Word[], listen: boolean) {
+    const questions = listen ? words.slice(0, 10) : words.filter((w) => w.s);
+    const key = listen ? 'm' : 't';
+    let q = 0, busy = false;
+
+    const sentence = (w: Word, filled: boolean) => {
+      const gap = document.createElement('span');
+      gap.className = 'gap';
+      gap.textContent = filled ? w.s![1] : ' ';
+      $('sentence').replaceChildren(w.s![0], gap, w.s![2]);
+    };
+
+    function ask() {
+      const w = questions[q];
+      const wrong = shuffle(words.filter((x) => x !== w && x[key])).slice(0, 3);
+      $('choices').replaceChildren(...shuffle([w, ...wrong]).map((x) => {
+        const b = tile(x[key], choose);
+        if (x === w) b.dataset.ok = '1';
+        return b;
+      }));
+      if (listen) {
+        $('reveal').textContent = '';
+        say(w.t, true);
+      } else sentence(w, false);
+    }
+
+    function choose(b: HTMLButtonElement) {
+      if (busy) return;
+      busy = true;
+      const w = questions[q];
+      const ok = b.dataset.ok === '1';
+      if (ok) {
+        hit();
+        b.classList.add('ok');
+      } else {
+        miss();
+        b.classList.add('bad');
+        $('choices').querySelector('[data-ok]')!.classList.add('ok');
+      }
+      // Show the answer: the word you heard, or the sentence with its gap filled (and read aloud).
+      if (listen) $('reveal').textContent = `${w.t} · ${w.m}`;
+      else {
+        sentence(w, true);
+        say(w.s!.join(''));
+      }
+      progress(q + 1, questions.length);
+      setTimeout(() => {
+        busy = false;
+        if (lives === 0) return end(false);
+        if (++q === questions.length) return end(true);
+        ask();
+      }, ok ? 1000 : 1800);
+    }
+
+    if (listen) $('hear').addEventListener('click', () => say(questions[q].t, true));
+    ask();
+  }
+
+  if (config.words.length) {
+    if (config.game === 'match') match(config.words);
+    else quiz(config.words, config.game === 'listen');
+  }
+</script>

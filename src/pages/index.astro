@@ -1,0 +1,247 @@
+---
+import App from '../layouts/App.astro';
+import Icon from '../components/Icon.astro';
+import { listTexts, termCounts } from '../lib/texts.ts';
+import { today } from '../lib/xp.ts';
+import { env } from 'cloudflare:workers';
+
+const { t } = Astro.locals;
+const user = Astro.locals.user!;
+const [texts, counts, day, inClass] = await Promise.all([
+  listTexts(user),
+  termCounts(user),
+  today(user),
+  env.DB.prepare('SELECT 1 FROM class_members WHERE user_id = ? LIMIT 1').bind(user.id).first(),
+]);
+// Goal ring: circumference of r=26 is 2πr ≈ 163.4.
+const ringLen = 163.4;
+const ringDone = Math.min(1, day.xp / day.goal) * ringLen;
+const minutes = (chars: number) => Math.max(1, Math.round(chars / 5 / 120)); // ~120 words/min for learners
+const tag = (x: (typeof texts)[number]) =>
+  x.owner_id === user.id ? ['mine', t('library.mine')] : x.visibility === 'classes' ? ['class', t('library.class')] : ['all', t('library.all')];
+const finishedCount = texts.filter((x) => x.finished_at).length;
+// Texts come newest first. Category dropdown: easiest level first (Kids on top), then by name; own texts last.
+const MINE = '__mine';
+const catOf = (x: (typeof texts)[number]) => (x.owner_id === user.id ? MINE : x.category);
+const minLvl = (c: string) => Math.min(...texts.filter((x) => catOf(x) === c).map((x) => x.level || 9));
+const cats = [...new Set(texts.map(catOf))].filter((c) => c && c !== MINE).sort((a, b) => minLvl(a) - minLvl(b) || a.localeCompare(b));
+const hasMine = texts.some((x) => catOf(x) === MINE);
+const levels = ([1, 2, 3] as const).filter((n) => texts.some((x) => x.level === n));
+// "Continue reading": the most recently opened text that isn't finished.
+const resume = texts.filter((x) => x.opened_at && !x.finished_at).sort((a, b) => b.opened_at! - a.opened_at!)[0];
+---
+
+<App title={t('tab.library')} heading={false}>
+  <section class="hello">
+    <h2>{t('library.hello')}, {user.name}</h2>
+    <a class="btn small quiet add" href="/texts/edit"><Icon name="plus" size={18} />{t('admin.add')}</a>
+  </section>
+
+  <section class="today card">
+    <svg class="ring" viewBox="0 0 64 64" aria-hidden="true">
+      <circle cx="32" cy="32" r="26" class="ring-bg" />
+      <circle cx="32" cy="32" r="26" class="ring-fg" stroke-dasharray={`${ringDone} ${ringLen}`} />
+    </svg>
+    <div class="today-text">
+      <span class="today-xp"><b>{day.xp}</b> / {day.goal} {t('xp.today')}</span>
+      <span class:list={['streak', { cold: day.streak === 0 }]}>
+        <Icon name="flame" size={18} /> {day.streak > 0 ? `${day.streak} ${t('xp.streak')}` : t('xp.startStreak')}
+      </span>
+    </div>
+    {
+      inClass && (
+        <a class="board" href="/leaderboard" aria-label={t('board.title')}>
+          <Icon name="trophy" size={24} />
+        </a>
+      )
+    }
+  </section>
+
+  <dl class="stats">
+    <div class="card"><dt>{counts.known ?? 0}</dt><dd>{t('library.known')}</dd></div>
+    <div class="card"><dt>{counts.learning ?? 0}</dt><dd>{t('library.learning')}</dd></div>
+    <div class="card"><dt>{finishedCount}</dt><dd>{t('library.finishedCount')}</dd></div>
+  </dl>
+
+  {
+    (counts.due ?? 0) > 0 && (
+      <a class="due card" href="/review">
+        <span class="due-n">{counts.due}</span>
+        <span class="due-t">{t('review.due')}</span>
+        <span class="btn small secondary">{t('review.start')}</span>
+      </a>
+    )
+  }
+
+  {
+    resume && (
+      <a class="resume" href={`/read/${resume.id}`}>
+        <span class="eyebrow">{t('library.continue')}</span>
+        <span class="r-title">{resume.title}</span>
+        <span class="go" aria-hidden="true"><Icon name="back" size={20} /></span>
+      </a>
+    )
+  }
+
+  {
+    (cats.length > 1 || hasMine) && (
+      <label class="catpick">
+        <span class="sr">{t('texts.category')}</span>
+        <select id="cat">
+          <option value="">{t('library.allCats')} · {texts.length}</option>
+          {cats.map((c) => <option value={c}>{c} · {texts.filter((x) => catOf(x) === c).length}</option>)}
+          {hasMine && <option value={MINE}>{t('library.mine')} · {texts.filter((x) => catOf(x) === MINE).length}</option>}
+        </select>
+      </label>
+    )
+  }
+  {
+    levels.length > 1 && (
+      <nav class="chips levels" aria-label={t('texts.level')}>
+        <button data-lvl="" aria-pressed="true">{t('library.allLevels')}</button>
+        {levels.map((n) => (
+          <button data-lvl={n} aria-pressed="false" class={`l${n}`}><span class="bars" aria-hidden="true"><i /><i /><i /></span>{t(`level.${n}`)}</button>
+        ))}
+      </nav>
+    )
+  }
+
+  {texts.length === 0 && <p class="muted">{t('library.empty')}</p>}
+  <ul class="list">
+    {
+      texts.map((x) => {
+        const [kind, label] = tag(x);
+        return (
+          <li data-cat={catOf(x)} data-lvl={x.level}>
+            <a href={`/read/${x.id}`} class="card item">
+              <span class="title">{x.title}</span>
+              <span class="meta">
+                {x.category && x.owner_id !== user.id ? <span class="tag cat">{x.category}</span> : <span class={`tag ${kind}`}>{label}</span>}
+                {x.level > 0 && <span class={`lvl l${x.level}`}><span class="bars" aria-hidden="true"><i /><i /><i /></span>{t(`level.${x.level as 1 | 2 | 3}`)}</span>}
+                <span>{minutes(x.chars)} {t('library.min')}</span>
+                {x.finished_at && (
+                  <span class="done"><Icon name="check" size={16} />{t('library.done').replace(/^✓\s*/, '')}</span>
+                )}
+              </span>
+            </a>
+          </li>
+        );
+      })
+    }
+  </ul>
+</App>
+
+<style>
+  .hello { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin: 0.5rem 0 1rem; }
+  .hello h2 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.03em; min-width: 0; overflow-wrap: anywhere; }
+  .add { flex: none; gap: 0.35rem; padding-inline: 0.875rem; white-space: nowrap; }
+
+  .today { display: flex; align-items: center; gap: 0.875rem; padding: 0.75rem 1rem; margin-bottom: 0.5rem; }
+  .ring { width: 56px; height: 56px; flex: none; transform: rotate(-90deg); }
+  .ring circle { fill: none; stroke-width: 7; stroke-linecap: round; }
+  .ring-bg { stroke: var(--paper-dim); }
+  .ring-fg { stroke: var(--accent); }
+  .today-text { flex: 1; display: grid; gap: 0.2rem; min-width: 0; }
+  .today-xp { font: 500 1rem/1.3 var(--font-display); }
+  .today-xp b { font-size: 1.25rem; color: var(--accent); }
+  .streak { display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.875rem; font-weight: 600; color: var(--streak); }
+  .streak.cold { color: var(--ink-mute); font-weight: 500; }
+  .board { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; background: var(--saffron); color: var(--on-saffron); flex: none; }
+
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; margin: 0 0 1rem; }
+  .stats div { padding: 0.75rem 0.5rem 0.6rem; text-align: center; }
+  .stats dt { font: 700 1.625rem/1 var(--font-display); color: var(--accent); letter-spacing: -0.02em; }
+  .stats dd { margin: 0.35rem 0 0; font-size: 0.75rem; line-height: 1.25; color: var(--ink-mute); }
+
+  .resume {
+    position: relative; display: grid; gap: 0.2rem; margin-bottom: 1.25rem;
+    padding: 1rem 3.25rem 1rem 1.125rem; border-radius: var(--r);
+    background: var(--accent); color: var(--paper); text-decoration: none;
+  }
+  .resume .eyebrow { color: color-mix(in srgb, var(--paper) 75%, transparent); }
+  .r-title { font: 500 1.1875rem/1.3 var(--font-display); letter-spacing: -0.01em; }
+  .go { position: absolute; right: 1rem; top: 50%; transform: translateY(-50%) rotate(180deg); display: grid; }
+  .resume:active { background: var(--accent-pressed); }
+
+  .due { display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem 1rem; margin-bottom: 0.75rem; text-decoration: none; color: var(--ink); }
+  .due-n { font: 700 1.625rem/1 var(--font-display); color: var(--accent); }
+  .due-t { flex: 1; font: 500 1rem/1.3 var(--font-display); }
+
+  .list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; }
+  .item { display: grid; gap: 0.5rem; padding: 0.875rem 1rem; text-decoration: none; color: var(--ink); }
+  .item:active { background: var(--paper-warm); }
+  @media (hover: hover) { .item:hover { border-color: var(--rule-strong); } }
+  .title { font: 500 1.0625rem/1.3 var(--font-display); letter-spacing: -0.01em; }
+  .meta { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; font-size: 0.8125rem; color: var(--ink-mute); }
+  .tag { padding: 0.15rem 0.45rem; border-radius: 3px; font: 500 0.6875rem/1.3 var(--font-display); letter-spacing: 0.08em; text-transform: uppercase; }
+  .tag.all { background: var(--paper-warm); color: var(--ink-soft); }
+  .tag.class { background: var(--st4); color: var(--accent-pressed); }
+  .tag.mine { background: var(--st2); color: var(--ink); }
+  .tag.cat { background: var(--paper-warm); color: var(--ink-soft); }
+  /* Difficulty: colour + 1/2/3 bars (never colour alone). Not the word-status colours, which mean "how well I know it". */
+  .l1 { --lv: var(--lv1); }
+  .l2 { --lv: var(--lv2); }
+  .l3 { --lv: var(--lv3); }
+  .lvl { display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.1rem 0.45rem; border-radius: 3px; font-weight: 600; color: var(--lv); background: color-mix(in srgb, var(--lv) 12%, transparent); }
+  .bars { display: inline-flex; align-items: flex-end; gap: 2px; height: 0.75em; }
+  .bars i { width: 3px; border-radius: 1px; background: currentColor; opacity: 0.25; }
+  .bars i:nth-child(1) { height: 40%; } .bars i:nth-child(2) { height: 70%; } .bars i:nth-child(3) { height: 100%; }
+  .l1 .bars i:nth-child(-n + 1), .l2 .bars i:nth-child(-n + 2), .l3 .bars i { opacity: 1; }
+  .levels { flex-wrap: wrap; overflow: visible; margin-inline: 0; padding-inline: 0; }
+  .levels button { display: inline-flex; align-items: center; gap: 0.35rem; padding-inline: 0.65rem; }
+  .levels button[class] { color: var(--lv); }
+  .levels button[aria-pressed='true'][class] { background: var(--lv); border-color: var(--lv); color: var(--paper); }
+
+  .catpick { display: block; margin-bottom: 0.5rem; }
+  .catpick select {
+    width: 100%; min-height: 2.75rem; padding: 0.5rem 2.5rem 0.5rem 0.875rem; border: 1px solid var(--rule-strong); border-radius: var(--r);
+    background: var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%23888' stroke-width='2'/%3E%3C/svg%3E") no-repeat right 0.875rem center;
+    color: var(--ink); font: 500 1rem/1.3 var(--font-display); appearance: none; -webkit-appearance: none; cursor: pointer;
+  }
+  .catpick select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .chips { display: flex; gap: 0.4rem; overflow-x: auto; margin: 0 -1rem 0.75rem; padding: 0 1rem 0.25rem; scrollbar-width: none; }
+  .chips::-webkit-scrollbar { display: none; }
+  .chips button {
+    flex: none; min-height: 2.25rem; padding: 0.4rem 0.875rem; border: 1px solid var(--rule-strong); border-radius: var(--r);
+    background: var(--surface); color: var(--ink-soft); font: 500 0.875rem/1 var(--font-display); cursor: pointer; white-space: nowrap;
+  }
+  .chips button[aria-pressed='true'] { background: var(--accent); border-color: var(--accent); color: var(--paper); }
+  .list li[hidden] { display: none; }
+
+  .done { display: inline-flex; align-items: center; gap: 0.2rem; color: var(--accent); font-weight: 600; }
+</style>
+
+<script>
+  import { brand } from '../brand/brand';
+
+  // Category and level filters (both apply), remembered on this device.
+  const pick: Record<'cat' | 'lvl', string> = { cat: '', lvl: '' };
+  const chips = [...document.querySelectorAll<HTMLButtonElement>('.levels button')];
+  const select = document.querySelector<HTMLSelectElement>('#cat');
+  function apply(key: 'cat' | 'lvl', value: string) {
+    if (key === 'cat') {
+      if (!select || ![...select.options].some((o) => o.value === value)) value = '';
+      if (select) select.value = value;
+    } else {
+      if (!chips.some((b) => b.dataset.lvl === value)) value = '';
+      chips.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.lvl === value)));
+    }
+    pick[key] = value;
+    document.querySelectorAll<HTMLElement>('.list li').forEach(
+      (li) => (li.hidden = (!!pick.cat && li.dataset.cat !== pick.cat) || (!!pick.lvl && li.dataset.lvl !== pick.lvl)),
+    );
+    try {
+      localStorage.setItem(`${brand.storagePrefix}.${key}`, value);
+    } catch {}
+  }
+  chips.forEach((b) => b.addEventListener('click', () => apply('lvl', b.dataset.lvl!)));
+  select?.addEventListener('change', () => apply('cat', select.value));
+  for (const key of ['cat', 'lvl'] as const) {
+    let saved = '';
+    try {
+      saved = localStorage.getItem(`${brand.storagePrefix}.${key}`) ?? '';
+    } catch {}
+    apply(key, saved);
+  }
+</script>

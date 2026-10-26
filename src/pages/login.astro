@@ -1,0 +1,56 @@
+---
+import { env } from 'cloudflare:workers';
+import App from '../layouts/App.astro';
+import LangSwitch from '../components/LangSwitch.astro';
+import { createSession } from '../lib/auth.ts';
+import { verifyPassword } from '../lib/crypto.ts';
+
+if (Astro.locals.user) return Astro.redirect('/');
+const { t } = Astro.locals;
+
+let error = '';
+let email = '';
+
+if (Astro.request.method === 'POST') {
+  const f = await Astro.request.formData();
+  email = String(f.get('email') ?? '').trim().toLowerCase();
+  const password = String(f.get('password') ?? '').slice(0, 200);
+
+  const now = Math.floor(Date.now() / 1000);
+  const user = await env.DB.prepare('SELECT id, password_hash, failed_logins, locked_until FROM users WHERE email = ?')
+    .bind(email)
+    .first<{ id: number; password_hash: string; failed_logins: number; locked_until: number }>();
+  if (user && user.locked_until > now) {
+    error = t('login.locked');
+  } else if (user && (await verifyPassword(password, user.password_hash))) {
+    if (user.failed_logins) await env.DB.prepare('UPDATE users SET failed_logins = 0 WHERE id = ?').bind(user.id).run();
+    await createSession(Astro.cookies, user.id, Astro.url.protocol === 'https:');
+    return Astro.redirect('/');
+  } else {
+    // 10 wrong passwords lock this account for 15 minutes (per account, so a shared school
+    // Wi-Fi never locks out the whole class). Unknown emails get the same message.
+    if (user) {
+      await env.DB.prepare(
+        `UPDATE users SET
+           locked_until = CASE WHEN failed_logins + 1 >= 10 THEN ?2 + 900 ELSE locked_until END,
+           failed_logins = CASE WHEN failed_logins + 1 >= 10 THEN 0 ELSE failed_logins + 1 END
+         WHERE id = ?1`,
+      ).bind(user.id, now).run();
+    }
+    error = t('login.bad');
+  }
+}
+---
+
+<App title={t('login.title')} tabs={false} mountains>
+  <form method="post" class="form">
+    {error && <p class="error" role="alert">{error}</p>}
+    <label>Email <input type="email" name="email" value={email} autocomplete="email" inputmode="email" required /></label>
+    <label>{t('signup.password')} <input type="password" name="password" autocomplete="current-password" required /></label>
+    <button class="btn block">{t('login.submit')}</button>
+  </form>
+  <p style="margin-top:1.5rem">{t('login.noAccount')} <a href="/signup">{t('signup.title')}</a></p>
+  <p class="hint">{t('login.forgot')}</p>
+  <LangSwitch />
+</App>
+

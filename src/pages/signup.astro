@@ -1,0 +1,73 @@
+---
+import { env } from 'cloudflare:workers';
+import App from '../layouts/App.astro';
+import LangSwitch from '../components/LangSwitch.astro';
+import { createSession, rateLimited } from '../lib/auth.ts';
+import { hashPassword } from '../lib/crypto.ts';
+
+if (Astro.locals.user) return Astro.redirect('/');
+const { t, lang } = Astro.locals;
+
+let error = '';
+const v = { name: '', email: '', code: '' };
+
+if (Astro.request.method === 'POST') {
+  const f = await Astro.request.formData();
+  v.name = String(f.get('name') ?? '').trim().slice(0, 80);
+  v.email = String(f.get('email') ?? '').trim().toLowerCase().slice(0, 200);
+  v.code = String(f.get('code') ?? '').trim().toUpperCase().replace(/^LOP-/, '');
+  const password = String(f.get('password') ?? '');
+
+  if (await rateLimited(Astro.request, `signup:${v.email}`)) error = t('rateLimited');
+  else if (!v.name) error = t('signup.errName');
+  else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.email)) error = t('signup.errEmail');
+  else if (password.length < 8 || password.length > 200) error = t('signup.errPassword');
+  else if (!f.get('consent')) error = t('signup.errConsent');
+
+  let classId: number | null = null;
+  if (!error && v.code) {
+    const c = await env.DB.prepare('SELECT id FROM classes WHERE join_code = ?').bind(v.code).first<{ id: number }>();
+    if (!c) error = t('signup.errCode');
+    else classId = c.id;
+  }
+
+  if (!error) {
+    const exists = await env.DB.prepare('SELECT 1 FROM users WHERE email = ?').bind(v.email).first();
+    if (exists) error = t('signup.errExists');
+  }
+
+  if (!error) {
+    // The language chosen on this page becomes the account's interface language.
+    // INSERT OR IGNORE: two sign-ups racing for one email get the friendly message, not a 500.
+    const user = await env.DB.prepare(
+      'INSERT OR IGNORE INTO users (email, name, password_hash, ui_lang) VALUES (?, ?, ?, ?) RETURNING id',
+    )
+      .bind(v.email, v.name, await hashPassword(password), lang)
+      .first<{ id: number }>();
+    if (!user) error = t('signup.errExists');
+    else {
+      if (classId) await env.DB.prepare('INSERT INTO class_members (class_id, user_id) VALUES (?, ?)').bind(classId, user.id).run();
+      await createSession(Astro.cookies, user.id, Astro.url.protocol === 'https:');
+      return Astro.redirect('/');
+    }
+  }
+}
+---
+
+<App title={t('signup.title')} tabs={false} mountains>
+  <p class="muted">{t('signup.intro')}</p>
+  <form method="post" class="form">
+    {error && <p class="error" role="alert">{error}</p>}
+    <label>{t('signup.name')} <input type="text" name="name" value={v.name} autocomplete="name" required /></label>
+    <label>Email <input type="email" name="email" value={v.email} autocomplete="email" inputmode="email" required /></label>
+    <label>{t('signup.password')} <input type="password" name="password" autocomplete="new-password" minlength="8" required />
+      <span class="hint">{t('signup.passwordHint')}</span></label>
+    <label>{t('signup.code')} <input type="text" name="code" value={v.code} autocapitalize="characters" autocomplete="off" />
+      <span class="hint">{t('signup.codeHint')}</span></label>
+    <label class="check"><input type="checkbox" name="consent" required />
+      <span>{t('signup.consent')} <a href="/privacy">{t('signup.privacy')}</a>.</span></label>
+    <button class="btn block">{t('signup.submit')}</button>
+  </form>
+  <p style="margin-top:1.5rem">{t('signup.haveAccount')} <a href="/login">{t('login.title')}</a></p>
+  <LangSwitch />
+</App>

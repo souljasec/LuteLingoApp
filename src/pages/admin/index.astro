@@ -1,0 +1,63 @@
+---
+import { env } from 'cloudflare:workers';
+import App from '../../layouts/App.astro';
+import AdminNav from '../../components/AdminNav.astro';
+import { joinCode } from '../../lib/crypto.ts';
+import { classSummaries } from '../../lib/insights.ts';
+
+const { t } = Astro.locals;
+
+if (Astro.request.method === 'POST') {
+  const name = String((await Astro.request.formData()).get('name') ?? '').trim().slice(0, 80);
+  if (name) {
+    // Retry on the rare join-code collision.
+    for (let i = 0; i < 5; i++) {
+      const row = await env.DB.prepare('INSERT OR IGNORE INTO classes (name, join_code) VALUES (?, ?) RETURNING id')
+        .bind(name, joinCode())
+        .first<{ id: number }>();
+      if (row) return Astro.redirect(`/admin/classes/${row.id}`);
+    }
+  }
+  return Astro.redirect('/admin');
+}
+
+const classes = await classSummaries();
+---
+
+<App title={t('tab.admin')}>
+  <AdminNav />
+
+  <form method="post" class="new">
+    <input type="text" name="name" placeholder={t('admin.className')} aria-label={t('admin.className')} required maxlength="80" />
+    <button class="btn">{t('admin.create')}</button>
+  </form>
+
+  {classes.length === 0 && <p class="muted">{t('admin.noClasses')}</p>}
+  <ul class="classes">
+    {
+      classes.map((c) => (
+        <li>
+          <a href={`/admin/classes/${c.id}`}>
+            <span class="name">{c.name}</span>
+            <span class="meta">
+              <b>{c.active}</b>/{c.members} {t('ins.activeOf')} · <b>{c.xp}</b> {t('ins.xpWeek')} · {t('admin.code')}: <code>{c.join_code}</code>
+            </span>
+          </a>
+        </li>
+      ))
+    }
+  </ul>
+</App>
+
+<style>
+  .new { display: flex; gap: 0.5rem; margin-bottom: 1.25rem; }
+  .new input { flex: 1; min-width: 0; font: 400 1rem/1.4 var(--font-body); padding: 0.7rem 0.875rem; border: 1px solid var(--rule-strong); border-radius: var(--r); background: var(--surface); }
+  .new input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .classes { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--rule); }
+  .classes li { border-bottom: 1px solid var(--rule); }
+  .classes a { display: grid; gap: 0.25rem; padding: 1rem 0.25rem; color: var(--ink); text-decoration: none; }
+  .classes a:active { background: var(--paper-warm); }
+  .name { font: 500 1.125rem/1.3 var(--font-display); }
+  .meta { font-size: 0.875rem; color: var(--ink-mute); }
+  code { font: 600 0.9375rem/1 ui-monospace, monospace; color: var(--accent); letter-spacing: 0.08em; }
+</style>

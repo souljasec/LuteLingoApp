@@ -1,0 +1,221 @@
+---
+import { env } from 'cloudflare:workers';
+import App from '../layouts/App.astro';
+import { LANGS, isLang } from '../lib/i18n.ts';
+import { rateLimited } from '../lib/auth.ts';
+
+const user = Astro.locals.user!;
+const { t } = Astro.locals;
+
+const SIZES = ['small', 'medium', 'large'] as const;
+const RATES = { slow: 0.7, normal: 0.9 } as const;
+const GOALS = [10, 20, 30, 50] as const;
+const THEMES = ['light', 'dim'] as const;
+
+let joined = '';
+let joinError = '';
+if (Astro.request.method === 'POST' && Astro.url.searchParams.has('join')) {
+  const code = String((await Astro.request.formData()).get('code') ?? '').trim().toUpperCase().replace(/^LOP-/, '');
+  // Best-effort brake on guessing codes (6 chars of 31 symbols ≈ 887M combinations).
+  const c = (await rateLimited(Astro.request, `join:${user.id}`))
+    ? null
+    : await env.DB.prepare('SELECT id, name FROM classes WHERE join_code = ?').bind(code).first<{ id: number; name: string }>();
+  if (!c) joinError = t('signup.errCode');
+  else {
+    await env.DB.prepare('INSERT OR IGNORE INTO class_members (class_id, user_id) VALUES (?, ?)').bind(c.id, user.id).run();
+    joined = c.name;
+  }
+} else if (Astro.request.method === 'POST') {
+  const f = await Astro.request.formData();
+  const lang = f.get('ui_lang');
+  const size = f.get('text_size');
+  const rate = RATES[f.get('speech_rate') as keyof typeof RATES];
+  const goal = Number(f.get('daily_goal'));
+  const theme = f.get('theme');
+  if (isLang(lang) && SIZES.includes(size as any) && rate && GOALS.includes(goal as any) && THEMES.includes(theme as any)) {
+    await env.DB.prepare('UPDATE users SET ui_lang = ?, text_size = ?, speech_rate = ?, daily_goal = ?, theme = ? WHERE id = ?')
+      .bind(lang, size, rate, goal, theme, user.id)
+      .run();
+    // Redirect so the whole page (tabs, title) re-renders in the new language.
+    return Astro.redirect('/account?saved=1');
+  }
+}
+const saved = Astro.url.searchParams.has('saved');
+const rateKey = user.speech_rate <= RATES.slow ? 'slow' : 'normal';
+const { results: myClasses } = await env.DB.prepare(
+  'SELECT c.name FROM classes c JOIN class_members m ON m.class_id = c.id WHERE m.user_id = ? ORDER BY c.name',
+).bind(user.id).all<{ name: string }>();
+const myGoal = (await env.DB.prepare('SELECT daily_goal FROM users WHERE id = ?').bind(user.id).first<{ daily_goal: number }>())?.daily_goal ?? 20;
+---
+
+<App title={t('account.title')}>
+  <dl class="info">
+    <dt>{t('account.name')}</dt><dd>{user.name}</dd>
+    <dt>Email</dt><dd>{user.email}</dd>
+    {user.role === 'admin' && (<><dt>{t('account.role')}</dt><dd>{t('account.admin')}</dd></>)}
+  </dl>
+
+  <form method="post" action="/account?join" class="join">
+    <label for="code">{t('join.title')}</label>
+    {joined && <p class="ok" role="status">{t('join.ok')}: <b>{joined}</b></p>}
+    {joinError && <p class="error" role="alert">{joinError}</p>}
+    {myClasses.length > 0 && <p class="hint">{t('join.inClasses')}: {myClasses.map((c) => c.name).join(', ')}</p>}
+    <div class="jrow">
+      <input id="code" type="text" name="code" autocapitalize="characters" autocomplete="off" placeholder="ABC123" required />
+      <button class="btn">{t('join.submit')}</button>
+    </div>
+  </form>
+
+  <form method="post" class="settings">
+    {saved && <p class="ok" role="status">{t('settings.saved')}</p>}
+
+    <fieldset>
+      <legend>{t('settings.lang')}</legend>
+      <div class="seg">
+        {Object.entries(LANGS).map(([code, name]) => (
+          <label><input type="radio" name="ui_lang" value={code} checked={user.ui_lang === code} /><span lang={code}>{name}</span></label>
+        ))}
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>{t('settings.theme')}</legend>
+      <div class="seg">
+        {THEMES.map((th) => (
+          <label><input type="radio" name="theme" value={th} checked={user.theme === th} /><span><i class={`sample ${th}`} aria-hidden="true"></i>{t(`settings.theme.${th}`)}</span></label>
+        ))}
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>{t('settings.size')}</legend>
+      <div class="seg">
+        {SIZES.map((s) => (
+          <label><input type="radio" name="text_size" value={s} checked={user.text_size === s} /><span class={`aa-${s}`}>{t(`settings.${s}`)}</span></label>
+        ))}
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>{t('settings.rate')}</legend>
+      <div class="seg">
+        {Object.keys(RATES).map((r) => (
+          <label><input type="radio" name="speech_rate" value={r} checked={rateKey === r} /><span>{t(`settings.${r as 'slow' | 'normal'}`)}</span></label>
+        ))}
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>{t('settings.goal')}</legend>
+      <div class="seg goals">
+        {GOALS.map((g) => (
+          <label><input type="radio" name="daily_goal" value={g} checked={myGoal === g} /><span><b>{g} XP</b><small>{t(`goal.${g}`)}</small></span></label>
+        ))}
+      </div>
+    </fieldset>
+
+    <button class="btn block">{t('settings.save')}</button>
+  </form>
+
+  <!-- Per-device: voices come from this phone/laptop, so the choice lives in its localStorage. -->
+  <section class="voice" data-rate={user.speech_rate} data-auto={t('settings.voiceAuto')} data-offline={t('settings.voiceOffline')}>
+    <label for="voice">{t('settings.voice')}</label>
+    <div class="vrow">
+      <select id="voice"></select>
+      <button id="voice-test" type="button" class="btn quiet">{t('settings.voiceTest')}</button>
+    </div>
+    <p class="hint" id="voice-hint">{t('settings.voiceHint')}</p>
+    <p class="hint" id="voice-none" hidden>{t('settings.voiceNone')}</p>
+  </section>
+
+  <section class="install">
+    <h2>{t('install.title')}</h2>
+    <p><strong>Android (Chrome):</strong> <Fragment set:html={t('install.android')} /></p>
+    <p><strong>iPhone (Safari):</strong> <Fragment set:html={t('install.ios')} /></p>
+  </section>
+
+  <form method="post" action="/logout">
+    <button class="btn quiet block">{t('logout')}</button>
+  </form>
+  <p class="hint" style="margin-top:1rem"><a href="/privacy">{t('privacy.title')}</a></p>
+  <p class="hint"><Fragment set:html={t('credit')} /></p>
+</App>
+
+<style>
+  .info { display: grid; grid-template-columns: auto 1fr; gap: 0.5rem 1rem; margin: 0 0 1.5rem; }
+  .info dt { color: var(--ink-mute); }
+  .info dd { margin: 0; word-break: break-word; }
+  .join { display: grid; gap: 0.5rem; padding-bottom: 1.5rem; margin-bottom: 1.5rem; border-bottom: 1px solid var(--rule); }
+  .join label { font: 500 0.9375rem/1.3 var(--font-display); }
+  .join p { margin: 0; }
+  .jrow { display: flex; gap: 0.5rem; }
+  .jrow input { flex: 1; min-width: 0; font: 600 1.0625rem/1.4 ui-monospace, monospace; letter-spacing: 0.1em; text-transform: uppercase; padding: 0.6rem 0.875rem; border: 1px solid var(--rule-strong); border-radius: var(--r); background: var(--surface); }
+  .jrow input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .settings { display: grid; gap: 1.25rem; padding-bottom: 1.5rem; }
+  fieldset { border: 0; padding: 0; margin: 0; }
+  legend { font: 500 0.9375rem/1.3 var(--font-display); margin-bottom: 0.5rem; padding: 0; }
+  .seg { display: flex; border: 1px solid var(--rule-strong); border-radius: var(--r); overflow: hidden; }
+  .seg label { flex: 1; position: relative; }
+  .seg label + label { border-left: 1px solid var(--rule-strong); }
+  .seg input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+  .seg span { display: grid; place-items: center; min-height: 2.75rem; padding: 0 0.5rem; background: var(--surface); text-align: center; }
+  .seg input:checked + span { background: var(--ink); color: var(--paper); }
+  .seg input:focus-visible + span { outline: 2px solid var(--indigo); outline-offset: -3px; }
+  .goals span { display: grid; gap: 0.1rem; padding: 0.4rem 0.25rem; }
+  .goals b { font: 700 0.9375rem/1.1 var(--font-display); }
+  .seg .sample { display: inline-block; width: 1rem; height: 1rem; border-radius: 50%; margin-right: 0.45rem; vertical-align: -0.15rem; border: 1px solid var(--rule-strong); }
+  .sample.light { background: #f8f6ef; }
+  .sample.dim { background: #1c2a2b; }
+  .seg span:has(.sample) { display: flex; align-items: center; justify-content: center; }
+  .goals small { font-size: 0.75rem; line-height: 1.2; }
+  .aa-small { font-size: 0.875rem; }
+  .aa-large { font-size: 1.125rem; }
+  .ok { color: var(--indigo); font-weight: 600; margin: 0; }
+  .voice { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.5rem; padding-bottom: 1.5rem; }
+  .voice label { font: 500 0.9375rem/1.3 var(--font-display); }
+  .vrow { display: flex; gap: 0.5rem; min-width: 0; }
+  .vrow .btn { flex: none; }
+  .vrow select { flex: 1; min-width: 0; width: 100%; text-overflow: ellipsis; font: 400 1rem/1.4 var(--font-body); padding: 0.6rem 0.75rem; border: 1px solid var(--rule-strong); border-radius: var(--r); background: var(--surface); color: var(--ink); }
+  .vrow select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .voice .hint { margin: 0; }
+  .install { border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); padding: 1rem 0; margin-bottom: 1.5rem; }
+  .install h2 { font-size: 1.0625rem; margin-bottom: 0.5rem; }
+  .install p { margin: 0.25rem 0; }
+</style>
+
+<script>
+  import { brand } from '../brand/brand';
+  import { englishVoices, onVoices, pickVoice, saveVoiceURI, savedVoiceURI } from '../scripts/voice.ts';
+
+  const box = document.querySelector<HTMLElement>('.voice')!;
+  const select = document.getElementById('voice') as HTMLSelectElement;
+
+  function fill() {
+    const vs = englishVoices();
+    document.getElementById('voice-none')!.hidden = vs.length > 0;
+    const auto = new Option(box.dataset.auto!, '');
+    // Apple names look like "Flo (English (United States))": keep the name, show the region code instead.
+    const label = (v: SpeechSynthesisVoice) => `${v.name.replace(/\s*\(.*\)\s*$/, '')} · ${v.lang}${v.localService ? ' · ' + box.dataset.offline : ''}`;
+    const opts = vs.map((v) => new Option(label(v), v.voiceURI));
+    select.replaceChildren(auto, ...opts);
+    select.value = vs.some((v) => v.voiceURI === savedVoiceURI()) ? savedVoiceURI() : '';
+  }
+  onVoices(fill);
+
+  function sample() {
+    const s = window.speechSynthesis;
+    if (!s) return;
+    const u = new SpeechSynthesisUtterance(brand.welcome);
+    u.lang = 'en-US';
+    u.rate = Number(box.dataset.rate) || 0.9;
+    const v = pickVoice();
+    if (v) u.voice = v;
+    s.cancel();
+    s.speak(u);
+  }
+  select.addEventListener('change', () => {
+    saveVoiceURI(select.value);
+    sample();
+  });
+  document.getElementById('voice-test')!.addEventListener('click', sample);
+</script>

@@ -1,0 +1,23 @@
+---
+const { t } = Astro.locals;
+const path = Astro.url.pathname;
+const items = [
+  ['/admin', t('admin.classes'), path === '/admin' || path.startsWith('/admin/classes')],
+  ['/admin/students', t('admin.students'), path.startsWith('/admin/students')],
+  ['/admin/texts', t('admin.texts'), path.startsWith('/admin/texts')],
+] as const;
+---
+
+<nav class="sub" aria-label={t('tab.admin')}>
+  {items.map(([href, label, on]) => <a href={href} aria-current={on ? 'page' : undefined}>{label}</a>)}
+</nav>
+
+<style>
+  .sub { display: flex; border-bottom: 1px solid var(--rule); margin: -0.25rem 0 1.25rem; }
+  .sub a {
+    flex: 1; text-align: center; padding: 0.75rem 0.25rem; min-height: 44px;
+    font: 500 0.8125rem/1.2 var(--font-display); letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--ink-mute); text-decoration: none; border-bottom: 2px solid transparent; margin-bottom: -1px;
+  }
+  .sub a[aria-current='page'] { color: var(--accent); border-bottom-color: var(--accent); }
+</style>

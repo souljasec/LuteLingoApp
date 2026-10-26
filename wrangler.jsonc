@@ -1,0 +1,21 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "lutelingo-app",
+  "compatibility_date": "2026-09-14",
+  "compatibility_flags": ["nodejs_compat"],
+  "main": "@astrojs/cloudflare/entrypoints/server",
+  "assets": { "binding": "ASSETS", "directory": "./dist" },
+  "observability": { "enabled": true },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "lutelingo",
+      "database_id": "REPLACE_WITH_YOUR_D1_DATABASE_ID", // from: npx wrangler d1 create lutelingo
+      "migrations_dir": "migrations"
+    }
+  ],
+  // Brute-force protection for login / sign-up: 10 attempts per minute per IP.
+  "ratelimits": [
+    { "name": "AUTH_LIMIT", "namespace_id": "1001", "simple": { "limit": 10, "period": 60 } }
+  ]
+}

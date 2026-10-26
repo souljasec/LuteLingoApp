@@ -1,0 +1,125 @@
+---
+import { env } from 'cloudflare:workers';
+import App from '../layouts/App.astro';
+import Icon from '../components/Icon.astro';
+import { termCounts } from '../lib/texts.ts';
+
+const { t } = Astro.locals;
+const user = Astro.locals.user!;
+
+if (Astro.request.method === 'POST') {
+  const f = await Astro.request.formData();
+  await env.DB.prepare('DELETE FROM saved_words WHERE user_id = ? AND term = ?')
+    .bind(user.id, String(f.get('term') ?? ''))
+    .run();
+  return Astro.redirect('/words');
+}
+
+// Learning terms (1-5), newest level first, like Lute's term list filtered to "learning".
+const [{ results: words }, counts] = await Promise.all([
+  env.DB.prepare(
+    'SELECT term, translation, status, parent FROM saved_words WHERE user_id = ? AND status BETWEEN 1 AND 5 ORDER BY status, created_at DESC',
+  )
+    .bind(user.id)
+    .all<{ term: string; translation: string; status: number; parent: string }>(),
+  termCounts(user),
+]);
+// When nothing is due, say when the next card is (flashcards should never be hard to find).
+const next = (counts.due ?? 0) > 0 ? null : await env.DB.prepare(
+  'SELECT min(due_at) AS at FROM saved_words WHERE user_id = ? AND status BETWEEN 1 AND 5',
+).bind(user.id).first<{ at: number | null }>();
+const nextLabel = next?.at
+  ? new Intl.DateTimeFormat(Astro.locals.lang === 'vi' ? 'vi-VN' : 'en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' }).format(next.at * 1000)
+  : null;
+---
+
+<App title={t('tab.words')}>
+  <dl class="stats">
+    <div class="card"><dt>{counts.learning ?? 0}</dt><dd>{t('library.learning')}</dd></div>
+    <div class="card"><dt>{counts.known ?? 0}</dt><dd>{t('words.knownCount')}</dd></div>
+  </dl>
+
+  <section class="review-box card">
+    <h2>{t('review.title')}</h2>
+    {
+      (counts.due ?? 0) > 0 ? (
+        <a class="btn block" href="/review">{t('review.start')} · {counts.due} {t('review.due')}</a>
+      ) : nextLabel ? (
+        <p class="hint">{t('review.nextAt')} <b>{nextLabel}</b></p>
+      ) : (
+        <p class="hint">{t('review.howTo')}</p>
+      )
+    }
+  </section>
+  <section class="review-box card">
+    <h2>{t('games.title')}</h2>
+    <p class="hint">{t('games.hint')}</p>
+    {
+      (counts.learning ?? 0) + (counts.known ?? 0) >= 5 ? (
+        <div class="game-btns">
+          <a class="btn block secondary" href="/play/match">{t('games.match')}</a>
+          <a class="btn block secondary" href="/play/listen">{t('games.listen')}</a>
+          <a class="btn block secondary" href="/play/fill">{t('games.fill')}</a>
+        </div>
+      ) : (
+        <p class="hint">{t('games.need')}</p>
+      )
+    }
+  </section>
+  {words.length === 0 && <p class="muted">{t('words.empty')}</p>}
+  <ul class="words" data-rate={user.speech_rate}>
+    {
+      words.map((w) => (
+        <li class="card">
+          <span class={`lvl st${w.status}`} title={`${t('st.learning')} ${w.status}`}>{w.status}</span>
+          <div class="pair">
+            <span class="term" lang="en">{w.term}{w.parent && <span class="par"> → {w.parent}</span>}</span>
+            {w.translation && <span class="vi">{w.translation}</span>}
+          </div>
+          <button class="icon-btn small say" data-say={w.term} aria-label={t('read.listen')}><Icon name="speaker" size={18} /></button>
+          <form method="post">
+            <input type="hidden" name="term" value={w.term} />
+            <button class="del" aria-label={`${t('words.delete')} ${w.term}`}><Icon name="close" size={18} /></button>
+          </form>
+        </li>
+      ))
+    }
+  </ul>
+</App>
+
+<style>
+  .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.5rem; margin: 0.25rem 0 1rem; }
+  .stats div { padding: 0.75rem 0.5rem 0.6rem; text-align: center; }
+  .stats dt { font: 700 1.625rem/1 var(--font-display); color: var(--accent); }
+  .stats dd { margin: 0.35rem 0 0; font-size: 0.75rem; color: var(--ink-mute); }
+  .review-box { padding: 0.875rem 1rem; margin-bottom: 1rem; display: grid; gap: 0.6rem; }
+  .review-box h2 { font-size: 1.0625rem; }
+  .review-box .hint { margin: 0; }
+  .game-btns { display: grid; gap: 0.5rem; }
+  .par { color: var(--ink-mute); font-size: 0.9375rem; }
+  .words { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; }
+  .words li { display: flex; align-items: center; gap: 0.75rem; padding: 0.5rem 0.25rem 0.5rem 0.75rem; }
+  .lvl { flex: none; display: grid; place-items: center; width: 2rem; height: 2rem; border-radius: var(--r); font: 700 0.9375rem/1 var(--font-display); }
+  .pair { flex: 1; min-width: 0; display: grid; }
+  .term { font: 500 1.0625rem/1.35 var(--font-body); word-break: break-word; }
+  .vi { color: var(--ink-mute); font-size: 0.9375rem; word-break: break-word; }
+  .del { width: 40px; height: 40px; display: grid; place-items: center; border: 0; background: none; color: var(--ink-mute); cursor: pointer; }
+</style>
+
+<script>
+  import { pickVoice } from '../scripts/voice.ts';
+  const rate = Number(document.querySelector<HTMLElement>('.words')?.dataset.rate ?? 0.9);
+  document.querySelectorAll<HTMLButtonElement>('.say').forEach((b) =>
+    b.addEventListener('click', () => {
+      const s = window.speechSynthesis;
+      if (!s) return;
+      const u = new SpeechSynthesisUtterance(b.dataset.say!);
+      u.lang = 'en-US';
+      u.rate = rate;
+      const v = pickVoice();
+      if (v) u.voice = v;
+      s.cancel();
+      s.speak(u);
+    }),
+  );
+</script>

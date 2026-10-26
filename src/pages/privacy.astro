@@ -1,0 +1,48 @@
+---
+import App from '../layouts/App.astro';
+import { brand } from '../brand/brand';
+const { t, lang } = Astro.locals;
+---
+
+<App title={t('privacy.title')} tabs={false} back={Astro.locals.user ? '/account' : '/signup'}>
+  {
+    lang === 'vi' ? (
+      <div class="prose">
+        <p>{brand.name} chỉ thu thập những thông tin cần thiết để bạn học:</p>
+        <ul>
+          <li><strong>Họ tên và email</strong> để đăng nhập và để giáo viên nhận ra bạn.</li>
+          <li><strong>Lớp học</strong> mà bạn tham gia.</li>
+          <li><strong>Tiến độ học</strong>: bài đã đọc, từ đã lưu, lần hoạt động gần nhất. Giáo viên chỉ thấy các con số (XP, số ngày học, số bài đọc xong, số từ), không thấy bạn đọc bài nào hay lưu từ nào.</li>
+          <li><strong>Bài đọc bạn tự thêm</strong>: chỉ bạn xem được.</li>
+          <li><strong>Cài đặt</strong>: ngôn ngữ giao diện, cỡ chữ, tốc độ đọc, mục tiêu mỗi ngày.</li>
+          <li><strong>Bảng xếp hạng</strong>: các bạn cùng lớp thấy họ tên và điểm XP trong tuần của bạn.</li>
+        </ul>
+        <p>Mật khẩu được mã hoá, không ai (kể cả chúng tôi) đọc được. Chúng tôi không bán hay chia sẻ dữ liệu của bạn cho bên thứ ba.</p>
+        <p>Khi bạn chạm vào một từ, từ đó được gửi tới dịch vụ dịch (Google, MyMemory) và kho câu ví dụ Tatoeba để lấy nghĩa và ví dụ. Không có thông tin cá nhân nào được gửi kèm.</p>
+        <p>Bạn có thể yêu cầu xoá tài khoản và toàn bộ dữ liệu bất cứ lúc nào bằng cách liên hệ giáo viên hoặc {brand.name}.</p>
+        <p class="hint">Nếu bạn dưới 16 tuổi, vui lòng hỏi ý kiến bố mẹ trước khi đăng ký.</p>
+      </div>
+    ) : (
+      <div class="prose">
+        <p>{brand.name} only collects what you need to learn:</p>
+        <ul>
+          <li><strong>Name and email</strong> to log in and so your teacher knows who you are.</li>
+          <li><strong>Your classes.</strong></li>
+          <li><strong>Learning progress</strong>: texts read, saved words, last activity. Your teacher sees only numbers (XP, days active, texts finished, word counts), not which texts you read or which words you saved.</li>
+          <li><strong>Texts you add yourself</strong>: only you can see them.</li>
+          <li><strong>Settings</strong>: interface language, text size, speech speed, daily goal.</li>
+          <li><strong>Leaderboard</strong>: classmates see your name and this week's XP.</li>
+        </ul>
+        <p>Passwords are encrypted and nobody (including us) can read them. We never sell or share your data with third parties.</p>
+        <p>When you tap a word, that word is sent to translation services (Google, MyMemory) and the Tatoeba example-sentence library. No personal information is sent with it.</p>
+        <p>You can ask for your account and all its data to be deleted at any time by contacting your teacher or {brand.name}.</p>
+        <p class="hint">If you are under 16, please ask your parents before signing up.</p>
+      </div>
+    )
+  }
+</App>
+
+<style>
+  .prose ul { padding-left: 1.25rem; }
+  .prose li { margin: 0.4rem 0; }
+</style>

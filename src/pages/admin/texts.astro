@@ -1,0 +1,46 @@
+---
+import { env } from 'cloudflare:workers';
+import App from '../../layouts/App.astro';
+import AdminNav from '../../components/AdminNav.astro';
+
+const { t } = Astro.locals;
+const { results: texts } = await env.DB.prepare(
+  `SELECT t.id, t.title, t.visibility, t.category,
+     (SELECT group_concat(c.name, ', ') FROM text_classes tc JOIN classes c ON c.id = tc.class_id WHERE tc.text_id = t.id) AS classes,
+     (SELECT count(*) FROM progress p WHERE p.text_id = t.id AND p.finished_at IS NOT NULL) AS finished
+   FROM texts t WHERE t.owner_id IS NULL ORDER BY t.category, t.id`,
+).all<{ id: number; title: string; visibility: string; category: string; classes: string | null; finished: number }>();
+---
+
+<App title={t('tab.admin')}>
+  <AdminNav />
+  <div class="bar">
+    <p class="eyebrow">{t('admin.schoolTexts')} · {texts.length}</p>
+    <a class="btn small" href="/texts/edit">{t('library.add')}</a>
+  </div>
+  <ul class="texts">
+    {
+      texts.map((x) => (
+        <li>
+          <a href={`/texts/edit?id=${x.id}`}>
+            <span class="title">{x.title}</span>
+            <span class="meta">
+              {x.category && `${x.category} · `}{x.visibility === 'classes' ? x.classes : t('texts.vis.all')} · {x.finished} {t('admin.finished')}
+            </span>
+          </a>
+        </li>
+      ))
+    }
+  </ul>
+</App>
+
+<style>
+  .bar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 0.75rem; }
+  .eyebrow { margin: 0; }
+  .texts { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--rule); }
+  .texts li { border-bottom: 1px solid var(--rule); }
+  .texts a { display: grid; gap: 0.25rem; padding: 0.875rem 0.25rem; color: var(--ink); text-decoration: none; }
+  .texts a:active { background: var(--paper-warm); }
+  .title { font: 500 1.0625rem/1.3 var(--font-display); }
+  .meta { font-size: 0.875rem; color: var(--ink-mute); }
+</style>

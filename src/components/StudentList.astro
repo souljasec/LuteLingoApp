@@ -1,0 +1,41 @@
+---
+import { fmtDate, type StudentRow } from '../lib/admin.ts';
+interface Props { students: StudentRow[]; removeFrom?: number }
+const { students, removeFrom } = Astro.props;
+const { t, lang } = Astro.locals;
+---
+
+<ul class="students">
+  {
+    students.map((s) => (
+      <li>
+        <a href={`/admin/students/${s.id}`} class="who">
+          <span class="name">{s.name}{s.role === 'admin' && ' · ★'}</span>
+          <span class="email">{s.email}</span>
+          <span class="stats">
+            <b>{s.finished}</b> {t('admin.finished')} · <b>{s.known}</b> {t('library.known')} · <b>{s.learning}</b> {t('library.learning')} · {t('admin.lastActive')}: {fmtDate(s.last_active_at, lang) ?? t('admin.never')}
+          </span>
+        </a>
+        {removeFrom && (
+          <form method="post">
+            <input type="hidden" name="action" value="remove" />
+            <input type="hidden" name="user" value={s.id} />
+            <button class="rm" aria-label={`${t('admin.remove')}: ${s.name}`} title={t('admin.remove')}>✕</button>
+          </form>
+        )}
+      </li>
+    ))
+  }
+</ul>
+
+<style>
+  .students { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--rule); }
+  .students li { display: flex; align-items: center; border-bottom: 1px solid var(--rule); }
+  .who { flex: 1; min-width: 0; display: grid; gap: 0.15rem; padding: 0.75rem 0.25rem; color: var(--ink); text-decoration: none; }
+  .who:active { background: var(--paper-warm); }
+  .name { font: 500 1.0625rem/1.3 var(--font-display); }
+  .email { font-size: 0.875rem; color: var(--ink-mute); word-break: break-all; }
+  .stats { font-size: 0.875rem; color: var(--ink-soft); }
+  .stats b { color: var(--accent); }
+  .rm { width: 44px; height: 44px; border: 0; background: none; color: var(--ink-mute); cursor: pointer; }
+</style>

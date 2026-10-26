@@ -1,0 +1,30 @@
+{
+  "name": "LuteLingo – Đọc tiếng Anh",
+  "short_name": "LuteLingo",
+  "description": "Đọc tiếng Anh, chạm vào từ để xem nghĩa tiếng Việt.",
+  "lang": "vi",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#f8f6ef",
+  "background_color": "#f8f6ef",
+  "icons": [
+    {
+      "src": "/brand/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/brand/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/brand/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

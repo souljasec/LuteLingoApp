@@ -1,0 +1,184 @@
+---
+// Daily XP heatmap: one row per student, Monday last week → Sunday this week, so it lines up
+// with the weekly reset of the numbers above. Darker square = more XP that day; the bottom row
+// counts active students per day. Hover/tap a square for its numbers. Refreshes itself while visible.
+import Icon from './Icon.astro';
+import type { StudentInsight } from '../lib/insights.ts';
+import { vnDay } from '../lib/xp-dates.ts';
+interface Props { students: StudentInsight[]; days: string[] }
+const { students, days } = Astro.props;
+const { t, lang } = Astro.locals;
+
+const today = days.indexOf(vnDay());
+const past = (i: number) => i <= today;
+const max = Math.max(1, ...students.flatMap((s) => s.daily));
+// Four steps of one hue, light → dark, relative to the busiest square of the two weeks.
+const level = (n: number) => (n ? Math.ceil((n / max) * 4) : 0);
+const active = days.map((_, i) => students.filter((s) => s.daily[i] > 0).length);
+
+const fmt = (day: string, opts: Intl.DateTimeFormatOptions) =>
+  new Intl.DateTimeFormat(lang === 'vi' ? 'vi-VN' : 'en-GB', { ...opts, timeZone: 'UTC' }).format(new Date(day + 'T00:00:00Z'));
+const letter = (day: string) => fmt(day, { weekday: 'narrow' });
+const long = (day: string) => fmt(day, { weekday: 'short', day: 'numeric', month: 'numeric' });
+const updated = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' }).format(new Date());
+const cls = (i: number) => [i === 7 && 'mon', i === today && 'today', !past(i) && 'later'];
+---
+
+<figure class="xp card" id="xp-chart">
+  <div class="head">
+    <figcaption>{t('ins.xpChart')}</figcaption>
+    <span class="upd">{t('ins.updated')} {updated}</span>
+    <button type="button" class="refresh" aria-label={t('ins.refresh')} title={t('ins.refresh')}><Icon name="refresh" size={18} /></button>
+  </div>
+  {
+    students.length === 0 ? (
+      <p class="hint empty">{t('ins.noData')}</p>
+    ) : (
+      <div class="plot">
+        <table class="heat">
+          <thead>
+            <tr class="wk">
+              <th></th>
+              <th colspan="7">{t('ins.lastWeek')}</th>
+              <th colspan="7" class="mon">{t('ins.thisWeek')}</th>
+            </tr>
+            <tr class="dl">
+              <th></th>
+              {days.map((d, i) => <th class:list={cls(i)} abbr={long(d)}>{letter(d)}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {students.map((s) => (
+              <tr>
+                <th><a href={`/admin/students/${s.id}`}>{s.name}</a></th>
+                {s.daily.map((n, i) => (
+                  <td class:list={cls(i)} data-tip={past(i) ? `${s.name} · ${long(days[i])}: ${n} XP` : undefined}>
+                    <span class={`q q${level(n)}`}>{past(i) ? n : ''}</span>
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr>
+              <th>{t('ins.activeRow')}</th>
+              {active.map((n, i) => (
+                <td class:list={cls(i)} data-tip={past(i) ? `${long(days[i])}: ${n}/${students.length} ${t('ins.dayActive')}` : undefined}>
+                  {past(i) ? n : ''}
+                </td>
+              ))}
+            </tr>
+          </tfoot>
+        </table>
+        <div class="tip" role="status" hidden></div>
+      </div>
+    )
+  }
+  <p class="hint">
+    <span class="legend" aria-hidden="true">{t('ins.less')} <i class="q q0"></i><i class="q q1"></i><i class="q q2"></i><i class="q q3"></i><i class="q q4"></i> {t('ins.more')}</span>
+    {t('ins.xpChartHint')}
+  </p>
+</figure>
+
+<style>
+  .xp { margin: 0 0 1rem; padding: 0.75rem 1rem 0.75rem; }
+  .head { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; }
+  figcaption { font: 500 0.9375rem/1.3 var(--font-display); flex: 1; }
+  .upd { font-size: 0.75rem; color: var(--ink-mute); white-space: nowrap; }
+  .refresh { width: 36px; height: 36px; margin: -6px -8px -6px 0; display: grid; place-items: center; border: 0; background: none; color: var(--ink-mute); cursor: pointer; border-radius: var(--r); }
+  .xp.busy .refresh { animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .xp.busy .refresh { animation: none; opacity: 0.5; } }
+  .plot { position: relative; }
+  /* Squares stay square and small on wide screens: the name column takes what is left. */
+  .heat { width: 100%; max-width: calc(9rem + 14 * 30px); border-collapse: collapse; table-layout: fixed; font-variant-numeric: tabular-nums; }
+  .heat th, .heat td { padding: 1px; font-weight: 500; }
+  .heat th:first-child { width: 5.25rem; text-align: left; padding-right: 0.5rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  tbody th a { font-size: 0.8125rem; color: var(--ink); text-decoration: none; line-height: 1.6; }
+  tbody th a:hover { color: var(--indigo); text-decoration: underline; }
+  .wk th { font-size: 0.6875rem; color: var(--ink-mute); text-align: left; padding-bottom: 2px; }
+  .dl th { font-size: 0.5625rem; letter-spacing: -0.02em; color: var(--ink-mute); text-align: center; overflow: hidden; }
+  .dl th.today { color: var(--ink); font-weight: 700; }
+  /* The weekly reset: a rule before this week's Monday. */
+  .heat .mon { border-left: 1px solid var(--rule-strong); }
+  .wk .mon { padding-left: 4px; }
+  .q { display: block; aspect-ratio: 1; border-radius: 3px; font-size: 0; color: transparent; }
+  .q0 { background: var(--rule); }
+  .q1 { background: color-mix(in srgb, var(--chart) 30%, var(--surface)); }
+  .q2 { background: color-mix(in srgb, var(--chart) 55%, var(--surface)); }
+  .q3 { background: color-mix(in srgb, var(--chart) 78%, var(--surface)); }
+  .q4 { background: var(--chart); }
+  .later .q { background: none; outline: 1px dashed var(--rule); outline-offset: -1px; }
+  td.today .q { box-shadow: 0 0 0 1px var(--surface), 0 0 0 2px var(--ink-mute); }
+  td[data-tip] { cursor: pointer; }
+  td.on .q { box-shadow: 0 0 0 1.5px var(--surface), 0 0 0 3px var(--ink); }
+  tfoot th, tfoot td { padding-top: 0.375rem; font-size: 0.6875rem; color: var(--ink-mute); text-align: center; }
+  tfoot th:first-child { text-align: left; }
+  tfoot td.on { color: var(--ink); font-weight: 700; }
+  .tip { position: absolute; transform: translate(-50%, -100%); padding: 0.3rem 0.55rem; border-radius: var(--r); background: var(--ink); color: var(--paper); font-size: 0.8125rem; white-space: nowrap; pointer-events: none; z-index: 1; }
+  .tip[hidden] { display: none; }
+  .hint { margin: 0.5rem 0 0; font-size: 0.8125rem; }
+  .legend { display: flex; align-items: center; gap: 2px; margin-bottom: 0.25rem; color: var(--ink-mute); font-size: 0.75rem; }
+  .legend .q { width: 10px; }
+  .empty { margin: 0.5rem 0 0.75rem; }
+</style>
+
+<script>
+  const TEN_MIN = 10 * 60_000;
+  let loadedAt = Date.now();
+
+  // Tooltip on hover (mouse) and tap (touch): the student, the day and that day's XP.
+  function bind(fig: HTMLElement) {
+    fig.querySelector('.refresh')!.addEventListener('click', () => refresh());
+    const plot = fig.querySelector<HTMLElement>('.plot');
+    if (!plot) return;
+    const tip = plot.querySelector<HTMLElement>('.tip')!;
+    const show = (e: PointerEvent) => {
+      const td = (e.target as Element).closest<HTMLElement>('td[data-tip]');
+      if (!td || td.classList.contains('on')) return;
+      plot.querySelectorAll('.on').forEach((c) => c.classList.remove('on'));
+      td.classList.add('on');
+      tip.textContent = td.dataset.tip!;
+      const r = td.getBoundingClientRect();
+      const p = plot.getBoundingClientRect();
+      tip.style.left = Math.min(p.width - 90, Math.max(90, r.left - p.left + r.width / 2)) + 'px';
+      tip.style.top = r.top - p.top - 4 + 'px';
+      tip.hidden = false;
+    };
+    plot.addEventListener('pointerover', show);
+    plot.addEventListener('pointerdown', show);
+    plot.addEventListener('pointerleave', (e) => {
+      if (e.pointerType === 'mouse') {
+        tip.hidden = true;
+        plot.querySelectorAll('.on').forEach((c) => c.classList.remove('on'));
+      }
+    });
+  }
+
+  // Re-fetch this page and swap in the fresh chart.
+  // ponytail: renders the whole class page (admin only, ≤ 6×/hour); a chart-only endpoint if that ever matters.
+  async function refresh() {
+    const fig = document.getElementById('xp-chart');
+    if (!fig || fig.classList.contains('busy')) return;
+    fig.classList.add('busy');
+    try {
+      const html = await (await fetch(location.href)).text();
+      const next = new DOMParser().parseFromString(html, 'text/html').getElementById('xp-chart');
+      if (next) {
+        fig.replaceWith(next);
+        bind(next);
+        loadedAt = Date.now();
+      }
+    } finally {
+      fig.classList.remove('busy');
+    }
+  }
+
+  const fig = document.getElementById('xp-chart');
+  if (fig) {
+    bind(fig);
+    const stale = () => document.visibilityState === 'visible' && Date.now() - loadedAt >= TEN_MIN;
+    setInterval(() => stale() && refresh(), 60_000);
+    document.addEventListener('visibilitychange', () => stale() && refresh());
+  }
+</script>

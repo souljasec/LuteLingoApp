@@ -1,0 +1,182 @@
+---
+import { env } from 'cloudflare:workers';
+import App from '../../layouts/App.astro';
+import { canEdit } from '../../lib/texts.ts';
+
+const { t } = Astro.locals;
+const user = Astro.locals.user!;
+const isAdmin = user.role === 'admin';
+const MAX = 20_000;
+
+// ?id=N edits a text (owner or admin for school texts); no id creates one.
+const id = Number(Astro.url.searchParams.get('id')) || null;
+const existing = id
+  ? await env.DB.prepare('SELECT id, title, body, owner_id, visibility, category, level FROM texts WHERE id = ?')
+      .bind(id)
+      .first<{ id: number; title: string; body: string; owner_id: number | null; visibility: string; category: string; level: number }>()
+  : null;
+if (id && (!existing || !canEdit(user, existing))) return Astro.redirect('/');
+// An admin moderating a student's shared text: same owner and audience, only content changes.
+const foreign = !!existing && existing.owner_id !== null && existing.owner_id !== user.id;
+
+// Admins share with any class; students only with the classes they are in.
+const { results: classes } = isAdmin
+  ? await env.DB.prepare('SELECT id, name FROM classes ORDER BY name').all<{ id: number; name: string }>()
+  : await env.DB.prepare('SELECT c.id, c.name FROM classes c JOIN class_members cm ON cm.class_id = c.id WHERE cm.user_id = ? ORDER BY c.name')
+      .bind(user.id)
+      .all<{ id: number; name: string }>();
+// School categories plus the user's own (never other students' private ones).
+const { results: knownCats } = await env.DB.prepare(
+  "SELECT DISTINCT category FROM texts WHERE category != '' AND (owner_id IS NULL OR owner_id = ?) ORDER BY category",
+)
+  .bind(user.id)
+  .all<{ category: string }>();
+const visOptions = isAdmin ? (['all', 'classes', 'private'] as const) : (['private', 'classes'] as const);
+const linked = existing
+  ? (await env.DB.prepare('SELECT class_id FROM text_classes WHERE text_id = ?').bind(existing.id).all<{ class_id: number }>()).results.map((r) => r.class_id)
+  : [];
+
+const v = {
+  title: existing?.title ?? '',
+  body: existing?.body ?? '',
+  // Admin texts default to everyone; a student's text to private (with all their classes pre-ticked).
+  visibility: existing?.visibility ?? (isAdmin ? 'all' : 'private'),
+  classIds: existing || isAdmin ? linked : classes.map((c) => c.id),
+  category: existing?.category ?? '',
+  level: existing?.level ?? 0,
+};
+let error = '';
+
+if (Astro.request.method === 'POST') {
+  const f = await Astro.request.formData();
+
+  if (f.get('action') === 'delete' && existing) {
+    await env.DB.prepare('DELETE FROM texts WHERE id = ?').bind(existing.id).run();
+    return Astro.redirect(isAdmin && existing.owner_id === null ? '/admin/texts' : '/');
+  }
+
+  v.title = String(f.get('title') ?? '').trim().slice(0, 200);
+  v.body = String(f.get('body') ?? '').replace(/\r\n/g, '\n').trim();
+  if (!foreign) {
+    v.visibility = String(f.get('visibility') ?? visOptions[0]);
+    if (!(visOptions as readonly string[]).includes(v.visibility)) v.visibility = visOptions[0];
+    const known = new Set(classes.map((c) => c.id));
+    v.classIds = f.getAll('class').map(Number).filter((c) => known.has(c));
+  }
+  v.category = String(f.get('category') ?? '').trim().slice(0, 40);
+  // "kids" → "Kids": reuse the existing spelling so class category filters keep matching.
+  const same = v.category && (await env.DB.prepare('SELECT category FROM texts WHERE lower(category) = lower(?) AND (owner_id IS NULL OR owner_id = ?) LIMIT 1').bind(v.category, user.id).first<{ category: string }>());
+  if (same) v.category = same.category;
+  // Level is optional for everyone (0 = not set), so students can tag their own texts too.
+  v.level = Math.min(3, Math.max(0, Number(f.get('level')) || 0));
+
+  if (!v.title) error = t('texts.errTitle');
+  else if (!v.body) error = t('texts.errBody');
+  else if (v.body.length > MAX) error = t('texts.errLong');
+  else if (v.visibility === 'classes' && v.classIds.length === 0) error = t('texts.errClasses');
+  else if (!existing && !isAdmin) {
+    // Storage-abuse guard (THREATS.md D2): at most 200 own texts per student.
+    const n = await env.DB.prepare('SELECT count(*) AS n FROM texts WHERE owner_id = ?').bind(user.id).first<{ n: number }>();
+    if ((n?.n ?? 0) >= 200) error = t('texts.errTooMany');
+  }
+
+  if (!error) {
+    // Admin texts for everyone / classes belong to the school (no owner); private ones to the author.
+    const owner = foreign ? existing.owner_id : isAdmin && v.visibility !== 'private' ? null : user.id;
+    let textId = existing?.id;
+    if (existing) {
+      await env.DB.prepare('UPDATE texts SET title = ?, body = ?, visibility = ?, owner_id = ?, category = ?, level = ?, updated_at = unixepoch() WHERE id = ?')
+        .bind(v.title, v.body, v.visibility, owner, v.category, v.level, existing.id)
+        .run();
+    } else {
+      const row = await env.DB.prepare('INSERT INTO texts (title, body, visibility, owner_id, category, level) VALUES (?, ?, ?, ?, ?, ?) RETURNING id')
+        .bind(v.title, v.body, v.visibility, owner, v.category, v.level)
+        .first<{ id: number }>();
+      textId = row!.id;
+    }
+    await env.DB.batch([
+      env.DB.prepare('DELETE FROM text_classes WHERE text_id = ?').bind(textId),
+      ...(v.visibility === 'classes' ? v.classIds : []).map((c) =>
+        env.DB.prepare('INSERT INTO text_classes (text_id, class_id) VALUES (?, ?)').bind(textId, c),
+      ),
+    ]);
+    return Astro.redirect(`/read/${textId}`);
+  }
+}
+---
+
+<App title={existing ? t('texts.edit') : t('texts.new')} back={existing ? `/read/${existing.id}` : '/'}>
+  <form method="post" class="form">
+    {error && <p class="error" role="alert">{error}</p>}
+    <label>{t('texts.title')} <input type="text" name="title" value={v.title} maxlength="200" required /></label>
+    <label>{t('texts.body')}
+      <textarea name="body" rows="14" maxlength={MAX} required lang="en">{v.body}</textarea>
+      <span class="hint">{t('texts.bodyHint')}</span>
+    </label>
+
+    <div class="pair">
+      <label>{t('texts.category')}
+        <input type="text" name="category" value={v.category} list="cats" maxlength="40" autocomplete="off" />
+        <datalist id="cats">{knownCats.map((c) => <option value={c.category} />)}</datalist>
+      </label>
+      <label>{t('texts.level')}
+        <select name="level">
+          {[0, 1, 2, 3].map((n) => <option value={n} selected={v.level === n}>{t(`level.${n as 0 | 1 | 2 | 3}`)}</option>)}
+        </select>
+      </label>
+      <span class="hint full">{t('texts.categoryHint')}</span>
+    </div>
+
+    {
+      !foreign && (isAdmin || classes.length > 0) && (
+        <fieldset class="vis">
+          <legend>{t('texts.visibility')}</legend>
+          {visOptions.map((opt) => (
+            <label class="check">
+              <input type="radio" name="visibility" value={opt} checked={v.visibility === opt} />
+              <span>{t(isAdmin || opt === 'private' ? `texts.vis.${opt}` : 'texts.vis.myClasses')}</span>
+            </label>
+          ))}
+          {classes.length > 0 && (
+            <div class="classes">
+              {classes.map((c) => (
+                <label class="check">
+                  <input type="checkbox" name="class" value={c.id} checked={v.classIds.includes(c.id)} />
+                  <span>{c.name}</span>
+                </label>
+              ))}
+            </div>
+          )}
+        </fieldset>
+      )
+    }
+
+    <button class="btn block" name="action" value="save">{t('texts.save')}</button>
+  </form>
+
+  {
+    existing && (
+      <form method="post" class="delete" data-confirm={t('texts.deleteConfirm')}>
+        <button class="btn danger block" name="action" value="delete">{t('texts.delete')}</button>
+      </form>
+    )
+  }
+</App>
+
+<style>
+  textarea { resize: vertical; min-height: 12rem; }
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem 1rem; }
+  .pair .full { grid-column: 1 / -1; margin-top: -0.5rem; }
+  .vis { border: 1px solid var(--rule); border-radius: var(--r); padding: 0.75rem 1rem; margin: 0; display: grid; gap: 0.5rem; }
+  .vis legend { font: 500 0.9375rem/1.3 var(--font-display); padding: 0 0.25rem; }
+  .classes { display: grid; gap: 0.5rem; padding-left: 1.75rem; }
+  .delete { margin-top: 2rem; }
+</style>
+
+<script>
+  document.querySelectorAll<HTMLFormElement>('form[data-confirm]').forEach((f) =>
+    f.addEventListener('submit', (e) => {
+      if (!confirm(f.dataset.confirm!)) e.preventDefault();
+    }),
+  );
+</script>

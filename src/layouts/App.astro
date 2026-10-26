@@ -1,0 +1,100 @@
+---
+import { Font } from 'astro:assets';
+import Decor from '../brand/Decor.astro';
+import { brand } from '../brand/brand';
+import Icon from '../components/Icon.astro';
+import Logo from '../components/Logo.astro';
+import '../styles/app.css';
+
+interface Props {
+  title: string;
+  tabs?: boolean;
+  back?: string;
+  mountains?: boolean;
+  heading?: boolean; // show the page title under the logo (main screens)
+}
+const { title, tabs = true, back, mountains = false, heading = true } = Astro.props;
+const { user, lang, t } = Astro.locals;
+const size = { small: '1.0625rem', medium: '1.25rem', large: '1.5rem' }[user?.text_size ?? 'medium'];
+const path = Astro.url.pathname;
+const tab = (href: string) =>
+  href === '/' ? path === '/' || path.startsWith('/read') || path.startsWith('/texts') : path.startsWith(href);
+---
+
+<!doctype html>
+<html lang={lang} data-theme={user?.theme ?? 'light'} style={`--read-size:${size}`}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>{`${title} · ${brand.name}`}</title>
+    <link rel="manifest" href="/brand/manifest.webmanifest" />
+    <link rel="icon" href="/brand/favicon.ico" sizes="any" />
+    <link rel="icon" href="/brand/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/brand/apple-touch-icon.png" />
+    <meta name="theme-color" content={brand.themeColor[user?.theme === 'dim' ? 'dim' : 'light']} />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content={user?.theme === 'dim' ? 'black' : 'default'} />
+    <meta name="apple-mobile-web-app-title" content={brand.name} />
+    <Font cssVariable="--font-display" preload />
+    <Font cssVariable="--font-body" preload />
+  </head>
+  <body>
+    {mountains && <Decor />}
+    <header class="top">
+      {
+        back ? (
+          <>
+            <a class="back" href={back} aria-label={t('back')}><Icon name="back" size={24} /></a>
+            <h1>{title}</h1>
+          </>
+        ) : (
+          <a class="home" href="/" aria-label={`${brand.name} · ${t('tab.library')}`}><Logo size="1.875rem" /></a>
+        )
+      }
+      <slot name="action" />
+    </header>
+    <main class:list={{ 'with-tabs': tabs && user }}>
+      {!back && heading && <h1 class="page-title">{title}</h1>}
+      <slot />
+    </main>
+    {
+      tabs && user && (
+        <nav class="tabs" aria-label={t('nav')}>
+          <a href="/" aria-current={tab('/') ? 'page' : undefined}>
+            <Icon name="book" />{t('tab.library')}
+          </a>
+          <a href="/words" aria-current={tab('/words') ? 'page' : undefined}>
+            <Icon name="bookmark" />{t('tab.words')}
+          </a>
+          {user.role === 'admin' && (
+            <a href="/admin" aria-current={tab('/admin') ? 'page' : undefined}>
+              <Icon name="school" />{t('tab.admin')}
+            </a>
+          )}
+          <a href="/account" aria-current={tab('/account') ? 'page' : undefined}>
+            <Icon name="settings" />{t('tab.account')}
+          </a>
+        </nav>
+      )
+    }
+    {
+      user && (
+        <script
+          type="application/json"
+          id="fx-i18n"
+          set:html={JSON.stringify({
+            xpToday: t('xp.today'),
+            streak: t('xp.streak'),
+            goalReached: t('xp.goalReached'),
+            continue: t('xp.continue'),
+            keep: t('xp.keep'),
+          }).replace(/</g, '\\u003c')}
+        />
+      )
+    }
+    <script>
+      if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+    </script>
+  </body>
+</html>

@@ -1,0 +1,80 @@
+/* Default palette: paper and ink with a blue accent. No gradients, no pills, no soft shadows. */
+:root {
+  --paper: #f8f6ef;
+  --paper-warm: #eeebe2;
+  --paper-dim: #ddd8cc;
+  --ink: #292d31;
+  --ink-soft: #40474b;
+  --ink-mute: #565e61;
+  --accent: #2f5aa8;          /* buttons, active states */
+  --accent-pressed: #244985;
+  --saffron: #e6cc86;         /* mustard: highlights, secondary buttons (ink text) */
+  --indigo: #365995;          /* links */
+  --vermillion: #c8452a;      /* errors only */
+  --pattern-teal: #438e83;
+  --pattern-blue: #5274ca;
+  --pattern-salmon: #d99190;
+  --pattern-mustard: #e6cc86;
+  --rule: color-mix(in srgb, var(--ink) 14%, transparent);
+  --rule-strong: color-mix(in srgb, var(--ink) 28%, transparent);
+  --r: 4px;
+  --logo-ink: #1f2a44;
+  --logo-accent: #2f5aa8;
+  /* Word status colours (Lute's model): new = blue, learning 1 → 5 = salmon → mustard → teal, known = none. */
+  --st0: #d6e3f7;
+  --st1: #f4c0b5;
+  --st2: #f3d098;
+  --st3: #eee0a8;
+  --st4: #cfe4da;
+  --st5: #e4efe9;
+  --surface: #ffffff;
+  --chart: #2f6fd0; /* data marks: chroma ≥ 0.10, contrast ≥ 3:1 on white */
+  --lv1: #2f7d5b;  /* difficulty: beginner green, elementary blue, intermediate plum */
+  --lv2: #365995;
+  --lv3: #8a3f74;
+  --on-saffron: #292d31;    /* text on saffron: dark in both themes */
+  --streak: #c8452a;
+  --error-bg: #f6ddd6;
+  --error-ink: #7a2615;
+  --warn-bg: #fdf3f0;
+  --warn-line: #e8b4a7;
+  --warn-ink: #8a2f1b;
+  --warn-chip: #fbe2db;
+  --tabs-h: 64px;
+  --safe-b: env(safe-area-inset-bottom, 0px);
+}
+
+/* "Dim": tinted dark (deep teal-slate, warm ink), chosen per account in Settings. Same roles, darker steps. */
+:root[data-theme='dim'] {
+  color-scheme: dark;
+  --paper: #1c2a2b;
+  --paper-warm: #243536;
+  --paper-dim: #314445;
+  --surface: #223233;
+  --ink: #ebe7dc;
+  --ink-soft: #d3cfc4;
+  --ink-mute: #a6aea9;
+  --accent: #8fb0f0;
+  --accent-pressed: #aac4f5;
+  --indigo: #a3bcef;
+  --vermillion: #f0896e;
+  --logo-ink: #ebe7dc;
+  --logo-accent: #8fb0f0;
+  --st0: #2d4567;
+  --st1: #6b3d35;
+  --st2: #6a5429;
+  --st3: #5c5830;
+  --st4: #2f5547;
+  --st5: #29443c;
+  --chart: #7fa7ee;
+  --streak: #f0896e;
+  --lv1: #7fcf9f;
+  --lv2: #a3bcef;
+  --lv3: #e3a6d2;
+  --error-bg: #4a2620;
+  --error-ink: #f6c9bd;
+  --warn-bg: #3a2b27;
+  --warn-line: #7a463a;
+  --warn-ink: #f4bfae;
+  --warn-chip: #5a3328;
+}

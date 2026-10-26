@@ -1,0 +1,14 @@
+---
+/** The brand lockup from the brand pack (src/brand/logo.svg). Decorative here: never a link. */
+import lockup from '../brand/logo.svg?raw';
+import { brand } from '../brand/brand';
+interface Props { size?: string }
+const { size = '2rem' } = Astro.props;
+---
+
+<span class="logo" role="img" aria-label={brand.name} style={`--logo-height: ${size}`} set:html={lockup} />
+
+<style>
+  .logo { display: inline-flex; flex: none; }
+  .logo :global(svg) { display: block; block-size: var(--logo-height); inline-size: auto; }
+</style>

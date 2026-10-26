@@ -1,0 +1,284 @@
+---
+import App from '../../layouts/App.astro';
+import Icon from '../../components/Icon.astro';
+import { canEdit, getProgress, getText, markOpened, termsFor } from '../../lib/texts.ts';
+import { findPhrases, parse, termOf, wordsOf, type Token } from '../../lib/tokenize.ts';
+
+const { t } = Astro.locals;
+const user = Astro.locals.user!;
+const text = await getText(user, Number(Astro.params.id));
+if (!text) return new Response(t('read.notFound'), { status: 404 });
+await markOpened(user, text.id);
+
+const paras = parse(text.body);
+const [terms, progress] = await Promise.all([termsFor(user, wordsOf(paras)), getProgress(user, text.id)]);
+const finished = !!progress?.finished_at;
+const phrases = new Set(Object.keys(terms).filter((k) => k.includes(' ')));
+
+// Status → class: new words blue, learning 1-5 coloured, known (99) and ignored (98) plain.
+const cls = (term: string) => {
+  const s = terms[term]?.s;
+  return s === undefined ? 'st0' : s <= 5 ? `st${s}` : '';
+};
+
+// A sentence becomes a list of items: single tokens, or a saved phrase holding its tokens.
+type Item = { tok: Token } | { phrase: string; toks: Token[] };
+const items = (sentence: Token[]): Item[] => {
+  const out: Item[] = [];
+  let i = 0;
+  for (const [a, b] of findPhrases(sentence, phrases)) {
+    for (; i < a; i++) out.push({ tok: sentence[i] });
+    out.push({ phrase: termOf(sentence.slice(a, b + 1)), toks: sentence.slice(a, b + 1) });
+    i = b + 1;
+  }
+  for (; i < sentence.length; i++) out.push({ tok: sentence[i] });
+  return out;
+};
+
+const config = {
+  rate: user.speech_rate,
+  textId: text.id,
+  terms,
+  i18n: {
+    failed: t('read.failed'),
+    other: t('read.other'),
+    listenSentence: t('read.listenSentence'),
+    textDone: t('xp.textDone'),
+  },
+};
+const statuses = [1, 2, 3, 4, 5] as const;
+---
+
+<App title={text.title} back="/">
+  {canEdit(user, text) && <a slot="action" class="action" href={`/texts/edit?id=${text.id}`} aria-label={t('read.edit')}><Icon name="edit" /></a>}
+  <div id="progress" aria-hidden="true"></div>
+
+  <div class="tools">
+  <ul class="legend">
+    <li><span class="sw st0"></span>{t('st.new')}</li>
+    <li><span class="sw ramp"></span>{t('st.learning')} 1–5</li>
+    <li><span class="sw known"></span>{t('st.known')}</li>
+  </ul>
+  <span class="zoom">
+    <button id="zoom-out" class="icon-btn" aria-label={t('read.smaller')} title={t('read.smaller')}>A−</button>
+    <button id="zoom-in" class="icon-btn" aria-label={t('read.bigger')} title={t('read.bigger')}>A+</button>
+  </span>
+  </div>
+
+  <article id="text" lang="en">
+    {
+      paras.map((para) => (
+        <p>
+          {para.map((sentence) => (
+            <span class="s">
+              {items(sentence).map((it) =>
+                'tok' in it ? (
+                  it.tok.word ? <span class:list={['w', cls(it.tok.w.toLowerCase())]}>{it.tok.w}</span> : it.tok.w
+                ) : (
+                  <span class:list={['mw', cls(it.phrase)]} data-term={it.phrase}>
+                    {it.toks.map((tok) => (tok.word ? <span class="w">{tok.w}</span> : tok.w))}
+                  </span>
+                ),
+              )}
+            </span>
+          ))}
+        </p>
+      ))
+    }
+  </article>
+
+  <section class="finish card">
+    <p id="finished-label" hidden={!finished}><Icon name="check" /> {t('read.finished')}</p>
+    <div id="finish-actions" hidden={finished}>
+      <button id="finish" class="btn block">{t('read.finish')}</button>
+    </div>
+    <button id="unfinish" class="btn quiet small" hidden={!finished}>{t('read.unfinish')}</button>
+  </section>
+  <p class="hint end">{t('read.hint')}</p>
+
+  <div id="pick" hidden role="status">
+    <span>{t('read.pickEnd')}</span>
+    <button id="pick-cancel" class="btn quiet">{t('read.cancel')}</button>
+  </div>
+
+  <div id="sheet" hidden data-config={JSON.stringify(config)}>
+    <div class="resizer" role="separator" aria-orientation="vertical" aria-label={t('read.resize')} title={t('read.resize')}></div>
+    <section class="panel" role="dialog" aria-modal="false" aria-labelledby="term">
+      <div class="grip" data-close aria-hidden="true"></div>
+      <button class="close" data-close aria-label={t('read.close')}><Icon name="close" /></button>
+      <div class="head">
+        <button id="say" class="icon-btn" aria-label={t('read.listen')}><Icon name="speaker" /></button>
+        <span id="term" lang="en"></span>
+      </div>
+      <p id="vi" class="vi" aria-live="polite"></p>
+      <p id="alts" class="alts"></p>
+
+      <div id="status-box" hidden>
+        <div class="status" role="group" aria-label={t('st.learning')}>
+          {statuses.map((n) => <button data-s={n} class={`st${n}`}>{n}</button>)}
+          <button data-s="99" class="known"><Icon name="check" size={18} /> {t('st.known')}</button>
+        </div>
+        <div class="status-sub">
+          <span class="hint">{t('st.hint')}</span>
+          <span>
+            <button data-s="98" class="link">{t('st.ignore')}</button>
+            <button id="remove" class="link" hidden>{t('st.remove')}</button>
+          </span>
+        </div>
+      </div>
+
+      <div id="parent-box" hidden>
+        <p id="parent-linked" class="parent-linked" hidden>
+          <span class="eyebrow">{t('parent.label')}</span>
+          <span id="parent-text" lang="en"></span>
+          <button id="parent-unlink" class="link">{t('parent.unlink')}</button>
+        </p>
+        <div id="parent-pick" class="parent-pick" hidden>
+          <span class="eyebrow">{t('parent.suggest')}</span>
+          <span id="parent-chips"></span>
+          <button id="parent-other" class="link">{t('parent.other')}</button>
+          <form id="parent-form" hidden>
+            <input id="parent-input" type="text" lang="en" autocapitalize="none" placeholder={t('parent.placeholder')} aria-label={t('parent.label')} />
+            <button class="btn small">{t('parent.link')}</button>
+          </form>
+        </div>
+      </div>
+
+      <button id="whole" class="btn quiet small">{t('read.whole')}</button>
+      <div id="ex" hidden>
+        <h2 class="eyebrow">{t('read.examples')}</h2>
+        <div id="ex-list"></div>
+      </div>
+    </section>
+  </div>
+  <p class="side-empty hint">{t('read.sideHint')}</p>
+</App>
+
+<style is:global>
+  #progress { position: fixed; left: 0; top: 0; height: 3px; width: 0; background: var(--accent); z-index: 40; }
+
+  .legend { list-style: none; display: flex; flex-wrap: wrap; gap: 0.35rem 1rem; padding: 0; margin: 0.25rem 0 1.25rem; font-size: 0.8125rem; color: var(--ink-mute); }
+  .legend li { display: inline-flex; align-items: center; gap: 0.4rem; }
+  .sw { width: 18px; height: 12px; border-radius: 3px; display: inline-block; }
+  .sw.ramp { background: linear-gradient(90deg, var(--st1), var(--st2), var(--st3), var(--st4), var(--st5)); }
+  .sw.known { border: 1px solid var(--rule-strong); }
+
+  .tools { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.75rem; }
+  .zoom { display: flex; gap: 0.4rem; flex: none; margin-top: -0.25rem; }
+  .zoom .icon-btn { width: 40px; height: 40px; font: 600 0.9375rem/1 var(--font-display); }
+  .side-empty { display: none; }
+
+  #text {
+    font: 400 calc(var(--read-size, 1.25rem) * var(--zoom, 1))/1.85 var(--font-body);
+    color: var(--ink);
+    /* Taps and long-presses select words; the phone's own text selection would fight that. */
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+  #text p { margin: 0 0 1.1em; }
+  .w, .mw { border-radius: 3px; cursor: pointer; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+  .w { padding: 0.05em 0.04em; }
+  .mw .w { padding: 0; }
+  .w.sel, .mw.sel { background: var(--saffron) !important; color: var(--on-saffron); }
+  .w.start { background: var(--saffron); outline: 2px solid var(--ink); color: var(--on-saffron); }
+  .end { text-align: center; margin-top: 1.25rem; }
+
+  .finish { margin-top: 2rem; padding: 1.25rem; display: grid; gap: 0.75rem; text-align: center; }
+  #finish-actions { display: grid; gap: 0.5rem; }
+  #finish-actions[hidden], #finished-label[hidden], #unfinish[hidden] { display: none; }
+  #finished-label { margin: 0; color: var(--accent); font: 600 1.125rem/1.3 var(--font-display); display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem; }
+  #unfinish { justify-self: center; }
+
+  #pick {
+    position: fixed; left: 0; right: 0; z-index: 30;
+    bottom: calc(var(--tabs-h) + var(--safe-b));
+    display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+    padding: 0.5rem 1rem;
+    background: var(--ink); color: var(--paper);
+    font: 500 1rem/1.3 var(--font-display);
+  }
+  #pick[hidden] { display: none; }
+  #pick .btn { color: var(--paper); border-color: rgba(248, 246, 239, 0.4); min-height: 2.5rem; padding: 0.5rem 1rem; }
+
+  /* A dock, not a modal: the text above stays tappable, so the next word can be tapped directly. */
+  #sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 50; pointer-events: none; }
+  #sheet[hidden] { display: none; }
+  .panel {
+    pointer-events: auto;
+    max-width: 42rem; margin: 0 auto;
+    max-height: 56vh; overflow-y: auto; overscroll-behavior: contain;
+    box-shadow: 0 -1px 0 var(--rule);
+    background: var(--paper);
+    border-top: 3px solid var(--accent);
+    padding: 0.5rem 1.25rem calc(1.5rem + env(safe-area-inset-bottom, 0px));
+    animation: up 0.18s ease-out;
+  }
+  @keyframes up { from { transform: translateY(24px); opacity: 0.6; } }
+  @media (prefers-reduced-motion: reduce) { .panel { animation: none; } }
+  .grip { width: 40px; height: 4px; border-radius: 2px; background: var(--rule-strong); margin: 0.25rem auto 0.75rem; }
+  .close { position: absolute; top: 0.5rem; right: 0.5rem; width: 44px; height: 44px; display: grid; place-items: center; border: 0; background: none; color: var(--ink-mute); cursor: pointer; }
+  .head { display: flex; align-items: center; gap: 0.75rem; padding-right: 2.5rem; }
+  #term { font: 500 1.375rem/1.35 var(--font-body); }
+  .vi { font: 700 2.25rem/1.2 var(--font-display); letter-spacing: -0.02em; margin: 0.75rem 0 0.25rem; word-break: break-word; }
+  .vi.long { font-size: 1.5rem; }
+  .vi.err { font-size: 1.125rem; color: var(--vermillion); font-weight: 500; }
+  .alts { color: var(--ink-soft); font-size: 1.0625rem; margin: 0 0 1rem; }
+  .alts:empty { display: none; }
+
+  #status-box { margin: 0.25rem 0 1rem; }
+  #status-box[hidden] { display: none; }
+  .status { display: grid; grid-template-columns: repeat(5, 1fr) 2.2fr; border: 1px solid var(--rule-strong); border-radius: var(--r); overflow: hidden; }
+  .status button { min-height: 2.75rem; border: 0; border-left: 1px solid var(--rule); font: 600 1rem/1 var(--font-display); color: var(--ink); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 0.3rem; }
+  .status button:first-child { border-left: 0; }
+  .status button.known { background: var(--surface); font-size: 0.875rem; }
+  .status button[aria-pressed='true'] { box-shadow: inset 0 0 0 3px var(--ink); }
+  .status-sub { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; margin-top: 0.35rem; }
+  .status-sub .hint { font-size: 0.8125rem; }
+  .link { border: 0; background: none; color: var(--indigo); font: 500 0.875rem/1 var(--font-body); padding: 0.6rem 0.4rem; cursor: pointer; text-decoration: underline; }
+  .link[aria-pressed='true'] { color: var(--ink); font-weight: 700; text-decoration: none; }
+
+  #parent-box { margin: 0 0 1rem; }
+  #parent-box[hidden], #parent-linked[hidden], #parent-pick[hidden], #parent-form[hidden] { display: none; }
+  .parent-linked, .parent-pick { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.6rem; margin: 0; }
+  .parent-linked .eyebrow, .parent-pick .eyebrow { width: 100%; }
+  #parent-text { font-size: 1.0625rem; }
+  #parent-text b { font-weight: 600; }
+  #parent-chips { display: contents; }
+  .chip { min-height: 2.25rem; padding: 0.35rem 0.75rem; border: 1px solid var(--rule-strong); border-radius: var(--r); background: var(--surface); font: 500 0.9375rem/1 var(--font-body); color: var(--ink); cursor: pointer; }
+  #parent-form { display: flex; gap: 0.5rem; width: 100%; }
+  #parent-input { flex: 1; min-width: 0; font: 400 1rem/1.4 var(--font-body); padding: 0.5rem 0.75rem; border: 1px solid var(--rule-strong); border-radius: var(--r); background: var(--surface); }
+
+  #ex { margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid var(--rule); }
+  #ex .eyebrow { margin-bottom: 0.75rem; }
+  .exi { display: flex; gap: 0.75rem; margin-bottom: 1rem; align-items: flex-start; }
+  .en { font-size: 1.125rem; }
+  .en b { color: var(--indigo); }
+  .tr { color: var(--ink-mute); }
+  .tw { border-radius: 3px; }
+  .tw.now { background: var(--saffron); color: var(--on-saffron); }
+  .resizer { display: none; }
+
+  /* Computer: text fills the left, the translation is a resizable panel on the right (like Lute). */
+  @media (min-width: 60rem) and (pointer: fine) {
+    /* Size buttons stay reachable however big the text gets. */
+    .tools { position: sticky; top: var(--top-h, 4.5rem); z-index: 5; background: var(--paper); margin: -1.5rem 0 0; padding: 1.25rem 0 0.25rem; }
+    main:has(#text) { max-width: none; margin: 0; padding: 1.5rem calc(var(--side, 26rem) + 2.5rem) 2rem 2.5rem; }
+    #sheet, .side-empty {
+      position: fixed; right: 0; left: auto; width: var(--side, 26rem);
+      top: var(--top-h, 4.5rem); bottom: calc(var(--tabs-h) + var(--safe-b));
+      border-left: 1px solid var(--rule-strong);
+    }
+    #sheet[hidden] ~ .side-empty { display: block; margin: 0; padding: 2rem 1.75rem; }
+    .panel { max-width: none; max-height: none; height: 100%; margin: 0; border-top: 0; box-shadow: none; padding: 1.25rem 1.75rem 2rem; animation: none; }
+    .grip { display: none; }
+    .resizer { display: block; position: absolute; left: -5px; top: 0; bottom: 0; width: 10px; cursor: col-resize; pointer-events: auto; z-index: 1; }
+    .resizer::after { content: ''; position: absolute; left: 3px; top: 50%; width: 4px; height: 3rem; margin-top: -1.5rem; border-radius: 2px; background: var(--rule-strong); }
+    .resizer:hover::after, .resizer.drag::after { background: var(--accent); }
+    #pick { right: var(--side, 26rem); }
+  }
+</style>
+
+<script>
+  import '../../scripts/reader.ts';
+</script>
