@@ -60,6 +60,7 @@ Status: ✅ mitigated and tested · ⚠️ accepted risk (documented) · 🔧 fi
 | Z5 | Seeing another class's names on the leaderboard | Students only get their own classes; `?class=` is matched against that list | Z5 | ✅ |
 | Z6 | Student publishes a text to everyone (spam, abuse) | Students may choose only `private` or `classes`, always as owner; `classes` is limited to classes they are a member of | Z6, Z6b | ✅ |
 | Z6c | Student shares an offensive text with their class | Admins can edit or delete class-shared student texts (`canEdit`); classmates can only read them; private texts stay out of admins' reach | Z6b | ✅ |
+| Z6d | A student text reaches the whole library unreviewed | Only an admin can "Add to library", which copies a class-shared text (never a private one) as a school text credited by first name only; the student's own text is unchanged | Z6d | ✅ |
 | Z7 | Admin removes the last admin | Admins cannot demote or delete themselves | — | ✅ |
 | Z9 | Guessing a class join code to see its texts and leaderboard | 6 characters from 31 symbols (≈ 887 million codes); best-effort rate limit per user on joins; admins can issue a new code at any time | J1 | ✅ |
 | Z10 | Students opening the class dashboard (classmates' activity) | Under `/admin`, admin only | J2, Z1 | ✅ |

@@ -236,6 +236,21 @@ describe('security', { concurrency: false }, () => {
     assert.equal(sql(`SELECT id FROM texts WHERE id = ${sid}`).length, 0);
   });
 
+  test('Z6d an admin adds a class text to the library as a credited copy; students cannot', { skip: !up && 'dev server not running' }, async () => {
+    const r = await alice.req('/texts/edit', { form: { title: `Poem ${RUN}`, body: 'Roses are red.', visibility: 'classes', class: String(classA), action: 'save' } });
+    const sid = Number(location(r).split('/').pop());
+    // A classmate's promote is refused (canEdit), and the student herself has no promote.
+    await alice.req(`/texts/edit?id=${sid}`, { form: { title: `Poem ${RUN}`, body: 'Roses are red.', visibility: 'classes', class: String(classA), action: 'promote' } });
+    assert.equal(sql(`SELECT count(*) AS n FROM texts WHERE owner_id IS NULL AND body = 'Roses are red.'`)[0].n, 0);
+    const p = await admin.req(`/texts/edit?id=${sid}`, { form: { title: `Poem ${RUN}`, body: 'Roses are red!', category: 'Poems', level: '1', action: 'promote' } });
+    const pid = Number(location(p).split('/').pop());
+    const copy = sql(`SELECT title, body, visibility, owner_id, category, level FROM texts WHERE id = ${pid}`)[0];
+    assert.deepEqual(copy, { title: `Poem ${RUN} (by Alice)`, body: 'Roses are red!', visibility: 'all', owner_id: null, category: 'Poems', level: 1 });
+    assert.equal(sql(`SELECT body FROM texts WHERE id = ${sid}`)[0].body, 'Roses are red.');
+    assert.equal((await bob.req(`/read/${pid}`)).status, 200);
+    sql(`DELETE FROM texts WHERE id IN (${sid}, ${pid})`);
+  });
+
   test('W1 language switch never redirects to another site', { skip: !up && 'dev server not running' }, async () => {
     const c = new Client();
     for (const back of ['//evil.example', '/\\evil.example', 'https://evil.example', '/%2F%2Fevil.example']) {

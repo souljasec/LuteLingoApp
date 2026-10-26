@@ -80,6 +80,16 @@ if (Astro.request.method === 'POST') {
     if ((n?.n ?? 0) >= 200) error = t('texts.errTooMany');
   }
 
+  if (!error && foreign && f.get('action') === 'promote') {
+    // Copy into the school library, credited by first name only. The student's own text is unchanged.
+    const author = await env.DB.prepare('SELECT name FROM users WHERE id = ?').bind(existing.owner_id).first<{ name: string }>();
+    const first = author?.name.trim().split(/\s+/)[0];
+    const row = await env.DB.prepare("INSERT INTO texts (title, body, visibility, owner_id, category, level) VALUES (?, ?, 'all', NULL, ?, ?) RETURNING id")
+      .bind(first ? `${v.title} (by ${first})`.slice(0, 200) : v.title, v.body, v.category, v.level)
+      .first<{ id: number }>();
+    return Astro.redirect(`/read/${row!.id}`);
+  }
+
   if (!error) {
     // Admin texts for everyone / classes belong to the school (no owner); private ones to the author.
     const owner = foreign ? existing.owner_id : isAdmin && v.visibility !== 'private' ? null : user.id;
@@ -152,6 +162,14 @@ if (Astro.request.method === 'POST') {
     }
 
     <button class="btn block" name="action" value="save">{t('texts.save')}</button>
+    {
+      foreign && (
+        <>
+          <button class="btn quiet block" name="action" value="promote">{t('texts.promote')}</button>
+          <span class="hint">{t('texts.promoteHint')}</span>
+        </>
+      )
+    }
   </form>
 
   {
