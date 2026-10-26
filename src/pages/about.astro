@@ -1,37 +1,104 @@
 ---
 import App from '../layouts/App.astro';
 import { brand } from '../brand/brand';
-const { t, user } = Astro.locals;
+import type { Lang } from '../lib/i18n.ts';
+const { t, user, lang } = Astro.locals;
+
 const REPO = 'https://github.com/souljasec/LuteLingoApp';
+const a = (href: string, text: string) => `<a href="${href}" target="_blank" rel="noopener">${text}</a>`;
+const repo = a(REPO, 'LuteLingoApp');
+const repoUrl = a(REPO, 'github.com/souljasec/LuteLingoApp');
+const dev = a('https://github.com/souljasec', 'souljasec');
+const agpl = a(`${REPO}/blob/main/LICENSE`, 'GNU AGPL-3.0');
+const lute = a('https://github.com/LuteOrg/lute-v3', 'Lute v3');
+
+// Quran 96:4-5: Arabic (Uthmani) and published translations quoted word for word, never our own.
+const ARABIC = 'ٱلَّذِى عَلَّمَ بِٱلْقَلَمِ ﴿٤﴾ عَلَّمَ ٱلْإِنسَـٰنَ مَا لَمْ يَعْلَمْ ﴿٥﴾';
+
+const COPY: Record<Lang, { intro: string; devTitle: string; dev: string; letterTitle: string; verse: string; source: string; letter: string[]; sign: string; licTitle: string; lic: string }> = {
+  en: {
+    intro: `${brand.name} runs on ${repo}, a free and open-source app for reading English: tap any word to see its meaning, hear it spoken, and keep the words you are learning.`,
+    devTitle: 'Developer',
+    dev: `LuteLingoApp is made by ${dev}. The full source code is on GitHub: ${repoUrl}. Ideas, bug reports and help are welcome there.`,
+    letterTitle: 'A letter about free knowledge',
+    verse: '“Who taught by the pen — Taught man that which he knew not.”',
+    source: "The Quran, Surah al-ʿAlaq 96:4–5, translation by Sahih International. From the very first revelation, and written on the dome of the Nation's Library in Ankara.",
+    letter: [
+      'Dear students and teachers,',
+      'Knowledge is the one thing that grows when you give it away. A word you learn today can help you read a book tomorrow, and a book can open a door to the whole world. That door should not stay closed because a school is small, far from the city, or has no money for expensive software.',
+      'That is why this app is free. It has no ads, and it does not sell your data. Its code is open: anyone can read how it works, host a copy for their own school, translate it, and make it better.',
+      'The licence keeps it that way. If someone changes the app and offers it to others, they must share their changes too, so the next learner gets the same freedom you have.',
+      'So please learn as much as you can, and then pass it on. Help a classmate with a word, teach a younger brother or sister, share a good text with your teacher. That is how knowledge stays free.',
+    ],
+    sign: 'With respect,',
+    licTitle: 'Licence and credits',
+    lic: `LuteLingoApp is free software under the ${agpl}. Its reading engine is based on ${lute} (MIT). It is an independent project and is not affiliated with the Lute project.`,
+  },
+  vi: {
+    intro: `${brand.name} chạy trên ${repo}, một ứng dụng miễn phí và mã nguồn mở để đọc tiếng Anh: chạm vào bất kỳ từ nào để xem nghĩa, nghe phát âm và lưu lại những từ bạn đang học.`,
+    devTitle: 'Người phát triển',
+    dev: `LuteLingoApp do ${dev} phát triển. Toàn bộ mã nguồn có trên GitHub: ${repoUrl}. Mọi ý tưởng, báo lỗi và sự giúp đỡ đều được hoan nghênh ở đó.`,
+    letterTitle: 'Lá thư về tri thức tự do',
+    verse: '“Đấng đã dạy (kiến thức) bằng cây viết; Đã dạy con người điều mà y không biết.”',
+    source: "Kinh Qur'an, chương al-ʿAlaq 96:4–5, bản dịch của Hasan Abdul-Karim. Thuộc lần mặc khải đầu tiên, và được viết trên mái vòm của Thư viện Millet ở Ankara, Thổ Nhĩ Kỳ.",
+    letter: [
+      'Các em học sinh và quý thầy cô thân mến,',
+      'Tri thức là thứ duy nhất càng cho đi lại càng nhiều thêm. Một từ em học hôm nay có thể giúp em đọc một cuốn sách ngày mai, và một cuốn sách có thể mở ra cánh cửa đến cả thế giới. Cánh cửa ấy không nên bị đóng lại chỉ vì một ngôi trường nhỏ, ở xa thành phố, hay không có tiền mua phần mềm đắt tiền.',
+      'Vì vậy, ứng dụng này miễn phí. Nó không có quảng cáo và không bán dữ liệu của các em. Mã nguồn của nó là mở: ai cũng có thể xem nó hoạt động thế nào, cài một bản cho trường mình, dịch nó và làm cho nó tốt hơn.',
+      'Giấy phép giữ cho điều đó luôn như vậy. Nếu ai đó thay đổi ứng dụng và đưa cho người khác dùng, họ cũng phải chia sẻ những thay đổi của mình, để người học sau có được sự tự do giống như các em.',
+      'Vậy nên, hãy học thật nhiều, rồi truyền lại cho người khác. Giúp một bạn cùng lớp hiểu một từ, dạy em trai hay em gái của mình, chia sẻ một bài đọc hay với thầy cô. Đó là cách tri thức luôn được tự do.',
+    ],
+    sign: 'Trân trọng,',
+    licTitle: 'Giấy phép và ghi công',
+    lic: `LuteLingoApp là phần mềm tự do theo giấy phép ${agpl}. Bộ đọc văn bản dựa trên ${lute} (MIT). Đây là một dự án độc lập, không liên kết với dự án Lute.`,
+  },
+  id: {
+    intro: `${brand.name} berjalan di atas ${repo}, aplikasi gratis dan sumber terbuka untuk membaca bahasa Inggris: ketuk kata mana saja untuk melihat artinya, mendengar pengucapannya, dan menyimpan kata-kata yang sedang kamu pelajari.`,
+    devTitle: 'Pengembang',
+    dev: `LuteLingoApp dibuat oleh ${dev}. Seluruh kode sumbernya ada di GitHub: ${repoUrl}. Ide, laporan masalah, dan bantuan sangat diterima di sana.`,
+    letterTitle: 'Surat tentang ilmu yang terbuka untuk semua',
+    verse: '“Yang mengajar (manusia) dengan pena. Dia mengajarkan manusia apa yang tidak diketahuinya.”',
+    source: "Al-Qur'an, Surah Al-'Alaq 96:4–5, terjemahan Kementerian Agama RI. Bagian dari wahyu yang pertama, dan tertulis di kubah Perpustakaan Millet di Ankara, Turki.",
+    letter: [
+      'Para siswa dan guru yang kami hormati,',
+      'Ilmu adalah satu-satunya hal yang justru bertambah ketika dibagikan. Satu kata yang kamu pelajari hari ini bisa membantumu membaca sebuah buku besok, dan sebuah buku bisa membuka pintu ke seluruh dunia. Pintu itu tidak boleh tertutup hanya karena sebuah sekolah kecil, jauh dari kota, atau tidak punya uang untuk membeli perangkat lunak yang mahal.',
+      'Karena itulah aplikasi ini gratis. Tidak ada iklan, dan datamu tidak dijual. Kodenya terbuka: siapa pun bisa melihat cara kerjanya, memasang salinannya untuk sekolahnya sendiri, menerjemahkannya, dan membuatnya lebih baik.',
+      'Lisensinya menjaga agar tetap begitu. Jika seseorang mengubah aplikasi ini dan memberikannya kepada orang lain, ia juga harus membagikan perubahannya, supaya pelajar berikutnya mendapat kebebasan yang sama denganmu.',
+      'Jadi, belajarlah sebanyak mungkin, lalu bagikan kepada orang lain. Bantu teman sekelas memahami sebuah kata, ajari adikmu, bagikan bacaan yang bagus kepada gurumu. Begitulah ilmu tetap terbuka untuk semua.',
+    ],
+    sign: 'Hormat saya,',
+    licTitle: 'Lisensi dan kredit',
+    lic: `LuteLingoApp adalah perangkat lunak bebas dengan lisensi ${agpl}. Mesin bacanya berdasarkan ${lute} (MIT). Ini adalah proyek independen dan tidak berafiliasi dengan proyek Lute.`,
+  },
+};
+const c = COPY[lang];
 ---
 
 <App title={t('about.title')} tabs={false} back={user ? '/account' : '/login'}>
-  <div class="prose" lang="en">
-    <p>{brand.name} runs on <a href={REPO} target="_blank" rel="noopener">LuteLingoApp</a>, a free and open-source app for reading English: tap any word to see its meaning, hear it spoken, and keep the words you are learning.</p>
+  <div class="prose">
+    <p set:html={c.intro} />
 
-    <h2>Developer</h2>
-    <p>LuteLingoApp is made by <a href="https://github.com/souljasec" target="_blank" rel="noopener">souljasec</a>. The full source code is on GitHub: <a href={REPO} target="_blank" rel="noopener">github.com/souljasec/LuteLingoApp</a>. Ideas, bug reports and help are welcome there.</p>
+    <h2>{c.devTitle}</h2>
+    <p set:html={c.dev} />
 
-    <h2>A letter about free knowledge</h2>
+    <h2>{c.letterTitle}</h2>
     <figure class="quote">
-      <blockquote>“Who taught by the pen — taught man that which he knew not.”</blockquote>
-      <figcaption>The Quran, Surah al-ʿAlaq 96:4–5 (Sahih International). From the very first revelation, and written on the dome of the Nation's Library in Ankara.</figcaption>
+      <p class="ar" lang="ar" dir="rtl">{ARABIC}</p>
+      <blockquote>{c.verse}</blockquote>
+      <figcaption>{c.source}</figcaption>
     </figure>
-    <p>Dear students and teachers,</p>
-    <p>Knowledge is the one thing that grows when you give it away. A word you learn today can help you read a book tomorrow, and a book can open a door to the whole world. That door should not stay closed because a school is small, far from the city, or has no money for expensive software.</p>
-    <p>That is why this app is free. It has no ads, and it does not sell your data. Its code is open: anyone can read how it works, host a copy for their own school, translate it, and make it better.</p>
-    <p>The licence keeps it that way. If someone changes the app and offers it to others, they must share their changes too, so the next learner gets the same freedom you have.</p>
-    <p>So please learn as much as you can, and then pass it on. Help a classmate with a word, teach a younger brother or sister, share a good text with your teacher. That is how knowledge stays free.</p>
-    <p>With respect,<br />souljasec</p>
+    {c.letter.map((p) => <p>{p}</p>)}
+    <p>{c.sign}<br />souljasec</p>
 
-    <h2>Licence and credits</h2>
-    <p>LuteLingoApp is free software under the <a href={`${REPO}/blob/main/LICENSE`} target="_blank" rel="noopener">GNU AGPL-3.0</a>. Its reading engine is based on <a href="https://github.com/LuteOrg/lute-v3" target="_blank" rel="noopener">Lute v3</a> (MIT). It is an independent project and is not affiliated with the Lute project.</p>
+    <h2>{c.licTitle}</h2>
+    <p set:html={c.lic} />
   </div>
 </App>
 
 <style>
   .prose h2 { font-size: 1.125rem; margin: 1.5rem 0 0.5rem; }
   .quote { margin: 0 0 1.25rem; padding: 0.25rem 0 0.25rem 1rem; border-left: 3px solid var(--accent); }
+  .quote .ar { margin: 0 0 0.5rem; font-size: 1.5rem; line-height: 1.9; }
   .quote blockquote { margin: 0; font: 500 1.125rem/1.45 var(--font-display); }
   .quote figcaption { margin-top: 0.4rem; font-size: 0.875rem; color: var(--ink-mute); }
 </style>
