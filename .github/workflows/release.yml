@@ -1,0 +1,20 @@
+name: Release
+# Push a version tag (npm version patch|minor|major && git push --follow-tags) to publish a GitHub release.
+on:
+  push: { tags: ['v*'] }
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+  release:
+    needs: ci
+    runs-on: ubuntu-latest
+    permissions: { contents: write }
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Publish release with the commits since the previous tag
+        env: { GH_TOKEN: '${{ github.token }}' }
+        run: |
+          prev=$(git describe --tags --abbrev=0 "$GITHUB_REF_NAME^" 2>/dev/null || true)
+          git log --no-merges --pretty='- %s' ${prev:+$prev..}"$GITHUB_REF_NAME" | grep -vE '^- [0-9]+\.[0-9]+\.[0-9]+$' > notes.md
+          gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file notes.md --verify-tag
