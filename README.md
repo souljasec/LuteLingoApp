@@ -7,6 +7,14 @@ Phone-first reading app for Vietnamese learners of English. Students read Englis
 - **License:** [AGPL-3.0-or-later](LICENSE): free to use, change and self-host
 - **Based on:** [Lute v3](https://github.com/LuteOrg/lute-v3) (MIT), see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
 
+<p align="center">
+  <img src="docs/screenshots/library.png" width="160" alt="Library with daily XP goal, streak and texts by level">
+  <img src="docs/screenshots/reader.png" width="160" alt="Reader: tap a word for its Vietnamese meaning, level and base word">
+  <img src="docs/screenshots/words.png" width="160" alt="My words with flashcards and games">
+  <img src="docs/screenshots/review.png" width="160" alt="Flashcard review">
+  <img src="docs/screenshots/game.png" width="160" alt="Word matching game">
+</p>
+
 > LuteLingoApp is an independent project based on Lute v3. It is not affiliated with or endorsed by the Lute project or its authors.
 
 ---
