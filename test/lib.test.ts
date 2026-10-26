@@ -83,11 +83,12 @@ test('flashcard scheduling', () => {
 });
 
 // xp.ts imports cloudflare:workers only inside functions that touch D1; the date helpers are pure.
-test('Vietnam days, week start and streaks', async () => {
-  const { vnDay, weekStart, streakFrom, twoWeeks } = await import('../src/lib/xp-dates.ts');
+test('School days (UTC+7 default), week start and streaks', async () => {
+  const { localDay, weekStart, streakFrom, twoWeeks, TIME_ZONE } = await import('../src/lib/xp-dates.ts');
+  assert.equal(TIME_ZONE, 'Etc/GMT-7'); // Etc/GMT signs are inverted
   const now = Date.UTC(2026, 9, 23, 18, 0); // Fri 23 Oct 18:00 UTC = Sat 24 Oct 01:00 in Vietnam
-  assert.equal(vnDay(0, now), '2026-10-24');
-  assert.equal(vnDay(1, now), '2026-10-23');
+  assert.equal(localDay(0, now), '2026-10-24');
+  assert.equal(localDay(1, now), '2026-10-23');
   assert.equal(weekStart(now), '2026-10-19'); // Monday
   const two = twoWeeks(now);
   assert.deepEqual([two.length, two[0], two[7], two[13]], [14, '2026-10-12', '2026-10-19', '2026-10-25']);

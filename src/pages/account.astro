@@ -73,7 +73,7 @@ const myGoal = (await env.DB.prepare('SELECT daily_goal FROM users WHERE id = ?'
       <legend>{t('settings.lang')}</legend>
       <div class="seg">
         {Object.entries(LANGS).map(([code, name]) => (
-          <label><input type="radio" name="ui_lang" value={code} checked={user.ui_lang === code} /><span lang={code}>{name}</span></label>
+          <label><input type="radio" name="ui_lang" value={code} checked={Astro.locals.lang === code} /><span lang={code}>{name}</span></label>
         ))}
       </div>
     </fieldset>

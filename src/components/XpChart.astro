@@ -4,12 +4,13 @@
 // counts active students per day. Hover/tap a square for its numbers. Refreshes itself while visible.
 import Icon from './Icon.astro';
 import type { StudentInsight } from '../lib/insights.ts';
-import { vnDay } from '../lib/xp-dates.ts';
+import { localDay, TIME_ZONE } from '../lib/xp-dates.ts';
+import { INTL } from '../lib/i18n.ts';
 interface Props { students: StudentInsight[]; days: string[] }
 const { students, days } = Astro.props;
 const { t, lang } = Astro.locals;
 
-const today = days.indexOf(vnDay());
+const today = days.indexOf(localDay());
 const past = (i: number) => i <= today;
 const max = Math.max(1, ...students.flatMap((s) => s.daily));
 // Four steps of one hue, light → dark, relative to the busiest square of the two weeks.
@@ -17,10 +18,10 @@ const level = (n: number) => (n ? Math.ceil((n / max) * 4) : 0);
 const active = days.map((_, i) => students.filter((s) => s.daily[i] > 0).length);
 
 const fmt = (day: string, opts: Intl.DateTimeFormatOptions) =>
-  new Intl.DateTimeFormat(lang === 'vi' ? 'vi-VN' : 'en-GB', { ...opts, timeZone: 'UTC' }).format(new Date(day + 'T00:00:00Z'));
+  new Intl.DateTimeFormat(INTL[lang], { ...opts, timeZone: 'UTC' }).format(new Date(day + 'T00:00:00Z'));
 const letter = (day: string) => fmt(day, { weekday: 'narrow' });
 const long = (day: string) => fmt(day, { weekday: 'short', day: 'numeric', month: 'numeric' });
-const updated = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' }).format(new Date());
+const updated = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: TIME_ZONE }).format(new Date());
 const cls = (i: number) => [i === 7 && 'mon', i === today && 'today', !past(i) && 'later'];
 ---
 

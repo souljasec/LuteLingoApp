@@ -1,4 +1,4 @@
-// Reader: word/phrase selection, Lute-style term statuses, and the Tiếng Việt sheet (translation,
+// Reader: word/phrase selection, Lute-style term statuses, and the translation sheet (translation,
 // pronunciation with word highlighting, Tatoeba examples). Sheet ported from
 // lute-custom/custom/vi.html; selection and statuses follow Lute: long-press the first word, tap
 // the last; statuses 1-5 learning, 99 known, 98 ignored, words without a status are new.
@@ -6,6 +6,7 @@
 
 import { pickVoice } from './voice.ts';
 import { brand } from '../brand/brand';
+import { locale } from '../brand/locale';
 import { baseForms } from '../lib/lemma.ts';
 import { celebrate, xpFeedback } from './celebrate.ts';
 
@@ -69,12 +70,12 @@ function say(text: string, el: HTMLElement) {
 // Each phone has its own IP, like the Lute panel had. Results are not written to the shared cache.
 async function translateHere(q: string): Promise<{ vi: string; alts: string[] }> {
   try {
-    const r = await fetch('https://clients5.google.com/translate_a/t?client=dict-chrome-ex&sl=en&tl=vi&q=' + encodeURIComponent(q));
+    const r = await fetch('https://clients5.google.com/translate_a/t?client=dict-chrome-ex&sl=en&tl=' + locale.translateTo + '&q=' + encodeURIComponent(q));
     const j: any = await r.json();
     const vi = Array.isArray(j[0]) ? j[0][0] : j[0];
     if (vi) return { vi, alts: [] };
   } catch {}
-  const r = await fetch('https://api.mymemory.translated.net/get?langpair=en|vi&q=' + encodeURIComponent(q));
+  const r = await fetch('https://api.mymemory.translated.net/get?langpair=en|' + locale.translateTo + '&q=' + encodeURIComponent(q));
   const j: any = await r.json();
   return { vi: j.responseData?.translatedText ?? '', alts: [] };
 }
@@ -106,6 +107,8 @@ async function translate(q: string) {
   }
 }
 
+const TATOEBA = { vi: 'vie', id: 'ind' }[locale.translateTo];
+
 async function examples(q: string) {
   const box = $('ex');
   const list = $('ex-list');
@@ -114,11 +117,11 @@ async function examples(q: string) {
   if (q.split(/\s+/).length > 3) return;
   try {
     const r = await fetch(
-      'https://api.tatoeba.org/unstable/sentences?lang=eng&sort=relevance&limit=20&trans:lang=vie&q=' + encodeURIComponent(q),
+      'https://api.tatoeba.org/unstable/sentences?lang=eng&sort=relevance&limit=20&trans:lang=' + TATOEBA + '&q=' + encodeURIComponent(q),
     );
     const data: any[] = (await r.json()).data ?? [];
     const items = data
-      .map((s) => ({ en: String(s.text), vi: (s.translations ?? []).flat().find((t: any) => t.lang === 'vie')?.text as string | undefined }))
+      .map((s) => ({ en: String(s.text), vi: (s.translations ?? []).flat().find((t: any) => t.lang === TATOEBA)?.text as string | undefined }))
       .filter((x) => x.vi && x.en.split(/\s+/).length >= 4)
       .slice(0, 3);
     if (q !== current || !items.length) return;

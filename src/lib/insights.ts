@@ -1,9 +1,10 @@
 // Class dashboard data: per-student progress, weekly totals, daily activity, popular texts.
 import { env } from 'cloudflare:workers';
-import { streakFrom, twoWeeks, vnDay, weekStart } from './xp-dates.ts';
+import { streakFrom, twoWeeks, localDay, weekStart } from './xp-dates.ts';
+import { locale } from '../brand/locale.ts';
 
-/** Unix seconds of a Vietnam date at 00:00. */
-const vnMidnight = (day: string) => Date.parse(`${day}T00:00:00+07:00`) / 1000;
+/** Unix seconds of a school date at 00:00. */
+const localMidnight = (day: string) => Date.parse(day + 'T00:00:00Z') / 1000 - locale.utcOffset * 3600;
 
 export type StudentInsight = {
   id: number;
@@ -22,7 +23,7 @@ export type StudentInsight = {
 
 export async function classInsights(classId: number) {
   const week = weekStart();
-  const weekTs = vnMidnight(week);
+  const weekTs = localMidnight(week);
   const [students, activity, topTexts] = await env.DB.batch<any>([
     env.DB.prepare(
       `SELECT u.id, u.name, u.last_active_at,
@@ -38,7 +39,7 @@ export async function classInsights(classId: number) {
     env.DB.prepare(
       `SELECT a.user_id, a.day, a.xp FROM activity a JOIN class_members m ON m.user_id = a.user_id
        WHERE m.class_id = ? AND a.xp > 0 AND a.day >= ?`,
-    ).bind(classId, vnDay(400)),
+    ).bind(classId, localDay(400)),
     env.DB.prepare(
       `SELECT t.title, count(*) AS n FROM progress p
        JOIN class_members m ON m.user_id = p.user_id JOIN texts t ON t.id = p.text_id

@@ -1,4 +1,5 @@
 import { env } from 'cloudflare:workers';
+import { INTL, type Lang } from './i18n.ts';
 
 export type StudentRow = {
   id: number;
@@ -40,5 +41,5 @@ export async function student(id: number) {
   return env.DB.prepare(`${STUDENTS} WHERE u.id = ?`).bind(id).first<StudentRow>();
 }
 
-export const fmtDate = (ts: number | null, lang: string) =>
-  ts ? new Intl.DateTimeFormat(lang === 'vi' ? 'vi-VN' : 'en-GB', { day: 'numeric', month: 'short', year: 'numeric' }).format(ts * 1000) : null;
+export const fmtDate = (ts: number | null, lang: Lang) =>
+  ts ? new Intl.DateTimeFormat(INTL[lang], { day: 'numeric', month: 'short', year: 'numeric' }).format(ts * 1000) : null;

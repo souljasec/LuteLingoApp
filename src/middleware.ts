@@ -1,6 +1,7 @@
 import { defineMiddleware } from 'astro:middleware';
 import { getUser } from './lib/auth.ts';
 import { isLang, translator } from './lib/i18n.ts';
+import { locale } from './brand/locale.ts';
 
 const PUBLIC = ['/login', '/signup', '/privacy', '/lang'];
 
@@ -12,7 +13,7 @@ export const onRequest = defineMiddleware(async (ctx, next) => {
   ctx.locals.user = user;
   // Logged in: the account setting. Logged out: the `lang` cookie from the switcher.
   const pref = user?.ui_lang ?? ctx.cookies.get('lang')?.value;
-  ctx.locals.lang = isLang(pref) ? pref : 'vi';
+  ctx.locals.lang = isLang(pref) ? pref : locale.translateTo;
   ctx.locals.t = translator(ctx.locals.lang);
   const path = ctx.url.pathname;
 

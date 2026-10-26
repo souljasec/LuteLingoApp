@@ -1,5 +1,8 @@
 import type { APIRoute } from 'astro';
 import { env } from 'cloudflare:workers';
+import { locale } from '../../brand/locale.ts';
+
+const TL = locale.translateTo;
 
 // Same sources as the Lute panel (lute-custom/custom/vi.html): Google first, MyMemory for fallback
 // and alternative meanings. Words and short phrases are cached for everyone; sentences are not
@@ -7,7 +10,7 @@ import { env } from 'cloudflare:workers';
 
 async function google(q: string): Promise<string> {
   const r = await fetch(
-    'https://clients5.google.com/translate_a/t?client=dict-chrome-ex&sl=en&tl=vi&q=' + encodeURIComponent(q),
+    'https://clients5.google.com/translate_a/t?client=dict-chrome-ex&sl=en&tl=' + TL + '&q=' + encodeURIComponent(q),
   );
   if (!r.ok) throw new Error(`google ${r.status}`);
   const j: any = await r.json();
@@ -15,7 +18,7 @@ async function google(q: string): Promise<string> {
 }
 
 async function mymemory(q: string): Promise<{ main: string; alts: string[] }> {
-  const r = await fetch('https://api.mymemory.translated.net/get?langpair=en|vi&q=' + encodeURIComponent(q));
+  const r = await fetch('https://api.mymemory.translated.net/get?langpair=en|' + TL + '&q=' + encodeURIComponent(q));
   if (!r.ok) throw new Error(`mymemory ${r.status}`);
   const j: any = await r.json();
   const alts = [...new Set<string>((j.matches ?? []).map((m: any) => String(m.translation).trim()))].slice(0, 5);

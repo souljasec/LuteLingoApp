@@ -22,6 +22,22 @@ const { t, lang } = Astro.locals;
         <p>Bạn có thể yêu cầu xoá tài khoản và toàn bộ dữ liệu bất cứ lúc nào bằng cách liên hệ giáo viên hoặc {brand.name}.</p>
         <p class="hint">Nếu bạn dưới 16 tuổi, vui lòng hỏi ý kiến bố mẹ trước khi đăng ký.</p>
       </div>
+    ) : lang === 'id' ? (
+      <div class="prose">
+        <p>{brand.name} hanya mengumpulkan hal yang kamu perlukan untuk belajar:</p>
+        <ul>
+          <li><strong>Nama dan email</strong> untuk masuk dan agar gurumu tahu siapa kamu.</li>
+          <li><strong>Kelas</strong> yang kamu ikuti.</li>
+          <li><strong>Kemajuan belajar</strong>: bacaan yang dibaca, kata yang disimpan, aktivitas terakhir. Gurumu hanya melihat angka (XP, hari aktif, bacaan selesai, jumlah kata), bukan bacaan atau kata mana yang kamu simpan.</li>
+          <li><strong>Bacaan yang kamu tambahkan sendiri</strong>: hanya kamu yang bisa melihatnya.</li>
+          <li><strong>Pengaturan</strong>: bahasa tampilan, ukuran teks, kecepatan suara, target harian.</li>
+          <li><strong>Papan peringkat</strong>: teman sekelas melihat namamu dan XP-mu minggu ini.</li>
+        </ul>
+        <p>Kata sandi dienkripsi dan tidak ada yang bisa membacanya (termasuk kami). Kami tidak pernah menjual atau membagikan datamu kepada pihak ketiga.</p>
+        <p>Saat kamu mengetuk sebuah kata, kata itu dikirim ke layanan terjemahan (Google, MyMemory) dan pustaka contoh kalimat Tatoeba untuk mendapatkan arti dan contohnya. Tidak ada informasi pribadi yang ikut dikirim.</p>
+        <p>Kamu bisa meminta akun dan semua datamu dihapus kapan saja dengan menghubungi gurumu atau {brand.name}.</p>
+        <p class="hint">Jika usiamu di bawah 16 tahun, mintalah izin orang tua sebelum mendaftar.</p>
+      </div>
     ) : (
       <div class="prose">
         <p>{brand.name} only collects what you need to learn:</p>

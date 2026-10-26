@@ -1,8 +1,8 @@
-// XP, daily goal, streak and weekly leaderboard (Duolingo-style). Days are Vietnam dates (UTC+7).
+// XP, daily goal, streak and weekly leaderboard (Duolingo-style). Days are school dates (locale.utcOffset).
 import { env } from 'cloudflare:workers';
-import { streakFrom, vnDay, weekStart } from './xp-dates.ts';
+import { streakFrom, localDay, weekStart } from './xp-dates.ts';
 
-export { streakFrom, vnDay, weekStart };
+export { streakFrom, localDay, weekStart };
 
 export const XP = { newWord: 1, reviewGood: 2, reviewAgain: 1, textFinished: 10, gameRound: 5 } as const;
 /** Daily XP caps per source (anti-farming; see THREATS.md X1-X3). */
@@ -14,11 +14,11 @@ export type Today = { xp: number; goal: number; streak: number };
 export async function today(user: { id: number }): Promise<Today> {
   const [{ results }, u] = await env.DB.batch<any>([
     // A year back is plenty for a streak.
-    env.DB.prepare('SELECT day, xp FROM activity WHERE user_id = ? AND day >= ? AND xp > 0').bind(user.id, vnDay(400)),
+    env.DB.prepare('SELECT day, xp FROM activity WHERE user_id = ? AND day >= ? AND xp > 0').bind(user.id, localDay(400)),
     env.DB.prepare('SELECT daily_goal FROM users WHERE id = ?').bind(user.id),
   ]);
   const days = new Set<string>(results.map((r: { day: string }) => r.day));
-  const xp = results.find((r: { day: string }) => r.day === vnDay())?.xp ?? 0;
+  const xp = results.find((r: { day: string }) => r.day === localDay())?.xp ?? 0;
   return { xp, goal: u.results[0]?.daily_goal ?? 20, streak: streakFrom(days) };
 }
 
@@ -30,7 +30,7 @@ export async function award(user: { id: number }, amount: number, source: Source
   let gained = 0;
   if (amount > 0) {
     const col = `xp_${source}`; // from a fixed set, never user input
-    const day = vnDay();
+    const day = localDay();
     const row = await env.DB.prepare(`SELECT ${col} AS n FROM activity WHERE user_id = ? AND day = ?`)
       .bind(user.id, day)
       .first<{ n: number }>();
