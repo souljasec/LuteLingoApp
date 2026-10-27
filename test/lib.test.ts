@@ -299,3 +299,35 @@ test('phrase length and new-word XP', () => {
   assert.equal(paysNewWordXp(true, 1), false, 'already saved');
   assert.equal(paysNewWordXp(false, IGNORED), false, 'ignoring is not learning');
 });
+
+import { translationQuery, googleText, myMemoryResult, mainMeaning } from '../src/lib/meanings.ts';
+
+test('translation query: trimmed, bounded, short ones cacheable', () => {
+  assert.equal(translationQuery('   '), null);
+  assert.equal(translationQuery(null), null);
+  assert.deepEqual(translationQuery('  Long Time Ago '), { q: 'Long Time Ago', key: 'long time ago', cacheable: true });
+  assert.equal(translationQuery('one two three four')?.cacheable, false, 'sentences are not cached (may be private)');
+  assert.equal(translationQuery('x'.repeat(600))?.q.length, 500);
+});
+
+test('service replies: Google text, MyMemory main and alternatives, Google preferred', () => {
+  assert.equal(googleText([['bến cảng', 'harbour']]), 'bến cảng');
+  assert.equal(googleText(['bến cảng']), 'bến cảng');
+  const alts = [' a ', 'a', 'b', 'c', 'd', 'e', 'f'].map((translation) => ({ translation }));
+  assert.deepEqual(myMemoryResult({ responseData: { translatedText: 'chính' }, matches: alts }), { main: 'chính', alts: ['a', 'b', 'c', 'd', 'e'] });
+  assert.deepEqual(myMemoryResult({}), { main: '', alts: [] });
+  assert.equal(mainMeaning('- Bến cảng.', 'cảng'), 'Bến cảng');
+  assert.equal(mainMeaning('', 'cảng'), 'cảng', 'MyMemory when Google gave nothing');
+  assert.equal(mainMeaning(undefined, undefined), '');
+});
+
+import { translationAnswer } from '../src/lib/meanings.ts';
+
+test('translation answer: other meanings only for short queries', () => {
+  const word = translationQuery('capital')!;
+  const sentence = translationQuery('the capital is big')!;
+  const mm = { main: 'vốn', alts: ['thủ đô, tiền vốn'] };
+  assert.deepEqual(translationAnswer(word, 'thủ đô', mm), { vi: 'thủ đô', alts: ['tiền vốn'] });
+  assert.deepEqual(translationAnswer(sentence, 'thủ đô lớn', mm), { vi: 'thủ đô lớn', alts: [] });
+  assert.deepEqual(translationAnswer(word, undefined, undefined), { vi: '', alts: [] });
+});

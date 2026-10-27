@@ -20,3 +20,32 @@ export function otherMeanings(alts: string[], main: string, query: string): stri
     return /\p{L}/u.test(a) && !k.includes(query) && !seen.has(k) && seen.add(k);
   }).slice(0, 6);
 }
+
+export type TranslationQuery = { q: string; key: string; cacheable: boolean };
+
+/** The ?q= of a translation request, or null when empty. Words and short phrases are cached for
+ * everyone; sentences are not (they may come from students' private texts). */
+export function translationQuery(raw: string | null): TranslationQuery | null {
+  const q = (raw ?? '').trim().slice(0, 500);
+  if (!q) return null;
+  const key = q.toLowerCase();
+  return { q, key, cacheable: key.split(/\s+/).length <= 3 };
+}
+
+/** Google's dict-chrome-ex reply: [["meaning", …]] for words, ["meaning"] for some phrases. */
+export const googleText = (j: any): string => (Array.isArray(j[0]) ? j[0][0] : j[0]);
+
+/** MyMemory's reply: the main translation and up to 5 distinct alternatives from its matches. */
+export function myMemoryResult(j: any): { main: string; alts: string[] } {
+  const alts = [...new Set<string>((j.matches ?? []).map((m: any) => String(m.translation).trim()))].slice(0, 5);
+  return { main: j.responseData?.translatedText || '', alts };
+}
+
+/** The meaning to show: Google's when it gave one, else MyMemory's, cleaned. */
+export const mainMeaning = (google: string | undefined, mymemory: string | undefined) => cleanMeaning(google || mymemory || '');
+
+/** What the student sees. Other meanings only help for words and short phrases; for sentences they are noise. */
+export function translationAnswer(query: TranslationQuery, google: string | undefined, mymemory: { main: string; alts: string[] } | undefined) {
+  const vi = mainMeaning(google, mymemory?.main);
+  return { vi, alts: query.cacheable ? otherMeanings(mymemory?.alts ?? [], vi, query.key) : [] };
+}
