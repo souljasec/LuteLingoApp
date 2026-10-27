@@ -47,3 +47,12 @@ export function joinCode(): string {
   const r = crypto.getRandomValues(new Uint8Array(6));
   return [...r].map((x) => alphabet[x % alphabet.length]).join('');
 }
+
+/** Runs `use` with fresh join codes until it succeeds (non-null); a null means the code collided. Gives up after 5 tries. */
+export async function tryJoinCodes<T>(use: (code: string) => Promise<T | null>): Promise<T | null> {
+  for (let i = 0; i < 5; i++) {
+    const result = await use(joinCode());
+    if (result !== null) return result;
+  }
+  return null;
+}

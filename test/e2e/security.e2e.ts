@@ -381,6 +381,20 @@ describe('security', { concurrency: false }, () => {
     assert.equal((await c.req(`/read/${classText}`)).status, 200);
   });
 
+  test('J5 a new join code replaces the old one', { skip: !up && 'dev server not running' }, async () => {
+    const r = await admin.req('/admin', { form: { name: `Rotating ${RUN}` } });
+    const id = Number(location(r).split('/').pop());
+    const code = () => sql(`SELECT join_code FROM classes WHERE id = ${id}`)[0].join_code as string;
+    const old = code();
+    assert.equal(location(await admin.req(`/admin/classes/${id}`, { form: { action: 'code' } })), `/admin/classes/${id}`);
+    const fresh = code();
+    assert.match(fresh, /^[A-HJKMNP-Z2-9]{6}$/);
+    assert.notEqual(fresh, old);
+    const c = await new Client().signup('Rotator');
+    assert.notEqual(await alert(await c.req('/account?join', { form: { code: old } })), '', 'old code refused');
+    assert.match(await (await c.req('/account?join', { form: { code: fresh } })).text(), /role="status"/, 'new code works');
+  });
+
   test('J2 the class dashboard is for admins only and lists the class', { skip: !up && 'dev server not running' }, async () => {
     const page = await admin.text(`/admin/classes/${classA}`);
     assert.ok(page.includes('Alice'), 'admin sees members');

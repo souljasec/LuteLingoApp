@@ -2,7 +2,7 @@
 import { env } from 'cloudflare:workers';
 import App from '../../layouts/App.astro';
 import AdminNav from '../../components/AdminNav.astro';
-import { joinCode } from '../../lib/crypto.ts';
+import { tryJoinCodes } from '../../lib/crypto.ts';
 import { classSummaries } from '../../lib/insights.ts';
 
 const { t } = Astro.locals;
@@ -10,13 +10,10 @@ const { t } = Astro.locals;
 if (Astro.request.method === 'POST') {
   const name = String((await Astro.request.formData()).get('name') ?? '').trim().slice(0, 80);
   if (name) {
-    // Retry on the rare join-code collision.
-    for (let i = 0; i < 5; i++) {
-      const row = await env.DB.prepare('INSERT OR IGNORE INTO classes (name, join_code) VALUES (?, ?) RETURNING id')
-        .bind(name, joinCode())
-        .first<{ id: number }>();
-      if (row) return Astro.redirect(`/admin/classes/${row.id}`);
-    }
+    const row = await tryJoinCodes((code) =>
+      env.DB.prepare('INSERT OR IGNORE INTO classes (name, join_code) VALUES (?, ?) RETURNING id').bind(name, code).first<{ id: number }>(),
+    );
+    if (row) return Astro.redirect(`/admin/classes/${row.id}`);
   }
   return Astro.redirect('/admin');
 }

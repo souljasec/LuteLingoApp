@@ -130,3 +130,15 @@ test('settings form: only listed choices are accepted', () => {
   }
   assert.equal(parsePrefs(form({})), null);
 });
+
+import { tryJoinCodes } from '../src/lib/crypto.ts';
+
+test('join codes: retried on collision, given up after 5 tries', async () => {
+  const seen: string[] = [];
+  const got = await tryJoinCodes(async (code) => (seen.push(code) < 3 ? null : `class with ${code}`));
+  assert.equal(seen.length, 3);
+  assert.equal(got, `class with ${seen[2]}`);
+  let tries = 0;
+  assert.equal(await tryJoinCodes(async () => (tries++, null)), null);
+  assert.equal(tries, 5);
+});

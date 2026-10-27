@@ -5,7 +5,7 @@ import Icon from '../../../components/Icon.astro';
 import XpChart from '../../../components/XpChart.astro';
 import { classInsights } from '../../../lib/insights.ts';
 import { fmtDate } from '../../../lib/admin.ts';
-import { joinCode } from '../../../lib/crypto.ts';
+import { tryJoinCodes } from '../../../lib/crypto.ts';
 
 const { t, lang } = Astro.locals;
 const id = Number(Astro.params.id);
@@ -22,10 +22,9 @@ if (Astro.request.method === 'POST') {
     const name = String(f.get('name') ?? '').trim().slice(0, 80);
     if (name) await env.DB.prepare('UPDATE classes SET name = ? WHERE id = ?').bind(name, id).run();
   } else if (action === 'code') {
-    for (let i = 0; i < 5; i++) {
-      const r = await env.DB.prepare('UPDATE OR IGNORE classes SET join_code = ? WHERE id = ?').bind(joinCode(), id).run();
-      if (r.meta.changes) break;
-    }
+    await tryJoinCodes(async (code) =>
+      (await env.DB.prepare('UPDATE OR IGNORE classes SET join_code = ? WHERE id = ?').bind(code, id).run()).meta.changes ? true : null,
+    );
   } else if (action === 'add') {
     const email = String(f.get('email') ?? '').trim().toLowerCase();
     const u = await env.DB.prepare('SELECT id FROM users WHERE email = ?').bind(email).first<{ id: number }>();
