@@ -67,6 +67,7 @@ test('base-form suggestions', () => {
   assert.equal(first('walked'), 'walk');
   assert.ok(baseForms('making').includes('make'));
   assert.ok(baseForms('liked').includes('like'));
+  assert.ok(baseForms('agreed').includes('agree'));
   assert.equal(first("Tom's"), 'tom');
   assert.deepEqual(baseForms('this'), []);
   assert.deepEqual(baseForms('morning'), []);

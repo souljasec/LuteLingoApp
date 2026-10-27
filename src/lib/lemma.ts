@@ -25,27 +25,32 @@ const KEEP = new Set(['this', 'is', 'his', 'has', 'was', 'us', 'bus', 'yes', 'ne
 
 const isVowel = (c: string) => 'aeiou'.includes(c);
 
+// -ing / -ed: each helper adds one kind of candidate from the stem (the word without its ending).
+const undoubled = (stem: string) => (stem.at(-1) === stem.at(-2) && !'lsz'.includes(stem.at(-1)!) ? [stem.slice(0, -1)] : []); // running, stopped
+const dropD = (w: string) => (w.endsWith('eed') ? [w.slice(0, -1)] : []); // agreed → agree
+const silentE = (stem: string) => (!isVowel(stem.at(-1)!) && isVowel(stem.at(-2) ?? '') ? [stem + 'e'] : []); // making → make
+function verbBases(w: string): string[] {
+  const stem = w.replace(/(ing|ed)$/, '');
+  return [...undoubled(stem), ...dropD(w), stem, ...silentE(stem)]; // stem: walked, playing
+}
+
+/** Suffix rules, tried in order: the first that matches gives the candidates, best first. */
+const RULES: [RegExp, (w: string) => string[]][] = [
+  [/i(es|ed)$/, (w) => [w.slice(0, -3) + 'y']], // cities, studied
+  [/ves$/, (w) => [w.slice(0, -3) + 'f', w.slice(0, -3) + 'fe']], // wolves, knives
+  [/(s|x|z|ch|sh)es$/, (w) => [w.slice(0, -2)]], // boxes, watches
+  [/[^su]s$/, (w) => [w.slice(0, -1)]], // cats (not glass, bus)
+  [/(ing|ed)$/, verbBases],
+];
+
 /** Up to three base-form candidates for a word, best first; [] when it already looks like a base form. */
 export function baseForms(word: string): string[] {
-  const w = word.toLowerCase().replace(/['’]s$/, '');
-  if (w !== word.toLowerCase() && w.length > 1) return [w]; // possessive: "Tom's" → "tom"
+  const lower = word.toLowerCase();
+  const w = lower.replace(/['’]s$/, '');
+  if (w !== lower && w.length > 1) return [w]; // possessive: "Tom's" → "tom"
   const irregular = BASE_OF.get(w);
   if (irregular) return [irregular];
   if (KEEP.has(w) || w.length < 4) return [];
-  const out: string[] = [];
-  const add = (s: string) => s.length >= 2 && s !== w && !out.includes(s) && out.push(s);
-
-  if (w.endsWith('ies') || w.endsWith('ied')) add(w.slice(0, -3) + 'y'); // cities, studied
-  else if (w.endsWith('ves')) add(w.slice(0, -3) + 'f'), add(w.slice(0, -3) + 'fe'); // wolves, knives
-  else if (/(s|x|z|ch|sh)es$/.test(w)) add(w.slice(0, -2)); // boxes, watches
-  else if (w.endsWith('s') && !w.endsWith('ss') && !w.endsWith('us')) add(w.slice(0, -1)); // cats
-  else if (w.endsWith('ing') || w.endsWith('ed')) {
-    const stem = w.slice(0, w.endsWith('ing') ? -3 : -2);
-    const a = stem.at(-1)!, b = stem.at(-2) ?? '';
-    if (a === b && !'lsz'.includes(a)) add(stem.slice(0, -1)); // running, stopped
-    if (w.endsWith('ed') && w.at(-3) === 'e') add(w.slice(0, -1)); // liked → like (via "like"+d)
-    add(stem); // walked, playing
-    if (!isVowel(a) && isVowel(b)) add(stem + 'e'); // making → make
-  }
-  return out.slice(0, 3);
+  const rule = RULES.find(([ending]) => ending.test(w));
+  return [...new Set(rule?.[1](w))].filter((s) => s.length >= 2 && s !== w).slice(0, 3);
 }
