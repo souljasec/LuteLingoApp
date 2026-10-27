@@ -80,7 +80,7 @@ Status: ✅ mitigated and tested · ⚠️ accepted risk (documented) · 🔧 fi
 | ID | Threat | Control | Test | Status |
 |---|---|---|---|---|
 | X1 | Answering one flashcard again and again for XP | `/api/review` only accepts **due** cards (409 otherwise); "not yet" makes the card due again only after 10 min | X1 | 🔧 |
-| X2 | Posting thousands of made-up words for XP | XP only for a term's first save; **daily caps** per source: words 50, reviews 100, texts 50 (`CAPS` in `src/lib/xp.ts`) | X2 | 🔧 |
+| X2 | Posting thousands of made-up words for XP, including many at once to slip past the caps | XP only for a term's first save; **daily caps** per source: words 50, reviews 100, texts 50 (`CAPS` in `src/lib/xp.ts`). The cap check and the first-save check run inside the same transaction as the write | X2, X2b | 🔧 |
 | X3 | Toggling "finished" on a text for repeated XP | Paid once per text, recorded in `progress.rewarded` | X3 | 🔧 |
 | X4 | XP for ignoring words | Status 98 (ignore) earns nothing | X4 | 🔧 |
 | X5 | Students creating many own texts to farm text XP | Text XP capped at 50/day; own texts capped at 200 | X2, D2 | 🔧 |

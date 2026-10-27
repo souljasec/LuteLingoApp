@@ -31,18 +31,19 @@ export async function award(user: { id: number }, amount: number, source: Source
   if (amount > 0) {
     const col = `xp_${source}`; // from a fixed set, never user input
     const day = localDay();
-    const row = await env.DB.prepare(`SELECT ${col} AS n FROM activity WHERE user_id = ? AND day = ?`)
-      .bind(user.id, day)
-      .first<{ n: number }>();
-    gained = Math.max(0, Math.min(amount, CAPS[source] - (row?.n ?? 0)));
-    if (gained > 0) {
-      await env.DB.prepare(
-        `INSERT INTO activity (user_id, day, xp, ${col}) VALUES (?1, ?2, ?3, ?3)
-         ON CONFLICT (user_id, day) DO UPDATE SET xp = xp + ?3, ${col} = ${col} + ?3`,
-      )
-        .bind(user.id, day, gained)
-        .run();
-    }
+    const read = env.DB.prepare(`SELECT coalesce((SELECT ${col} FROM activity WHERE user_id = ? AND day = ?), 0) AS n`).bind(user.id, day);
+    // One batch is one transaction: requests arriving together can't all see the same old total
+    // and each add up to the cap (THREATS.md X2). Gained = total after − total before.
+    const add = `max(0, min(?3, ?4 - ${col}))`; // SQLite's SET reads the old row
+    const [before, , after] = await env.DB.batch<{ n: number }>([
+      read,
+      env.DB.prepare(
+        `INSERT INTO activity (user_id, day, xp, ${col}) VALUES (?1, ?2, min(?3, ?4), min(?3, ?4))
+         ON CONFLICT (user_id, day) DO UPDATE SET xp = xp + ${add}, ${col} = ${col} + ${add}`,
+      ).bind(user.id, day, amount, CAPS[source]),
+      read,
+    ]);
+    gained = after.results[0].n - before.results[0].n;
   }
   return { ...(await today(user)), gained };
 }

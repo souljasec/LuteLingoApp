@@ -295,6 +295,16 @@ describe('security', { concurrency: false }, () => {
     assert.equal((await c.json('/api/words', { term: 'farm1', status: 3 })).body.xp.gained, 0);
   });
 
+  test('X2b caps and first-save XP hold when requests arrive at the same time', { skip: !up && 'dev server not running' }, async () => {
+    const c = await new Client().signup('Racer');
+    const burst = await Promise.all(Array.from({ length: 60 }, (_, i) => c.json('/api/words', { term: `race${i}`, status: 1 })));
+    assert.equal(burst.reduce((n, r) => n + r.body.xp.gained, 0), 50, 'reported XP stops at the cap');
+    assert.equal(sql(`SELECT xp_words FROM activity a JOIN users u ON u.id = a.user_id WHERE u.email = '${c.email}'`)[0].xp_words, 50, 'stored XP stops at the cap');
+    const d = await new Client().signup('Twin');
+    const same = await Promise.all(Array.from({ length: 5 }, () => d.json('/api/words', { term: 'twin', status: 1 })));
+    assert.equal(same.reduce((n, r) => n + r.body.xp.gained, 0), 1, 'one new word pays once');
+  });
+
   test('X3 finishing a text pays XP once, however often it is toggled', { skip: !up && 'dev server not running' }, async () => {
     const c = await new Client().signup('Toggler');
     const gains = [];

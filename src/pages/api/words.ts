@@ -27,12 +27,14 @@ export const POST: APIRoute = async ({ request, locals }) => {
   const parent = body.parent === undefined ? null : clean(body.parent);
   if (!term || !STATUSES.has(status) || parent === term) return json({ error: 'invalid' }, 400);
   const now = Math.floor(Date.now() / 1000);
-  // XP only for a term marked for the first time, so changing levels back and forth earns nothing.
-  const existed = await env.DB.prepare('SELECT 1 FROM saved_words WHERE user_id = ? AND term = ?').bind(user.id, term).first();
+  const exists = env.DB.prepare('SELECT 1 FROM saved_words WHERE user_id = ? AND term = ?').bind(user.id, term);
   // New phrases are capped; long terms saved before the cap can still be changed or removed.
-  if (!existed && term.split(' ').length > MAX_PHRASE) return json({ error: 'too long' }, 400);
+  if (term.split(' ').length > MAX_PHRASE && !(await exists.first())) return json({ error: 'too long' }, 400);
 
   const stmts = [
+    // XP only for a term marked for the first time, so changing levels back and forth earns nothing.
+    // Checked inside the batch (one transaction), so parallel saves of a new word pay once.
+    exists,
     // An empty translation never overwrites one we already have.
     env.DB.prepare(
       `INSERT INTO saved_words (user_id, term, translation, status, due_at, parent, sentence) VALUES (?1, ?2, ?3, ?4, ?5, coalesce(?6, ''), ?7)
@@ -53,6 +55,7 @@ export const POST: APIRoute = async ({ request, locals }) => {
     );
   }
   const results = await env.DB.batch<{ t: string; s: number }>(stmts);
+  const existed = results[0].results.length > 0;
   // Ignoring a word (98) is not learning it.
   const xp = await award(user, existed || status === 98 ? 0 : XP.newWord, 'words');
   return json({ ok: true, parent: parent ? (results.at(-1)?.results[0] ?? null) : null, xp });
