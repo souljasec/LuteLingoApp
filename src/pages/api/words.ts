@@ -16,6 +16,9 @@ import { cleanTerm, isTooLong, parseTermInput, paysNewWordXp, type TermInput } f
  */
 const exists = (userId: number, term: string) => env.DB.prepare('SELECT 1 FROM saved_words WHERE user_id = ? AND term = ?').bind(userId, term);
 
+/** New phrases are capped; long terms saved before the cap can still be changed or removed. */
+const tooLongToAdd = async (userId: number, term: string) => isTooLong(term) && !(await exists(userId, term).first());
+
 /** The batch that saves a term: [does it exist yet?, the upsert, then the parent's insert and read when linking]. */
 function saveStatements(userId: number, v: TermInput, now: number) {
   const due = dueFor(v.status, now);
@@ -47,8 +50,7 @@ export const POST: APIRoute = async ({ request, locals }) => {
   const user = locals.user!;
   const v = parseTermInput(await request.json().catch(() => null));
   if (!v) return json({ error: 'invalid' }, 400);
-  // New phrases are capped; long terms saved before the cap can still be changed or removed.
-  if (isTooLong(v.term) && !(await exists(user.id, v.term).first())) return json({ error: 'too long' }, 400);
+  if (await tooLongToAdd(user.id, v.term)) return json({ error: 'too long' }, 400);
   const results = await env.DB.batch<{ t: string; s: number }>(saveStatements(user.id, v, Math.floor(Date.now() / 1000)));
   const xp = await award(user, paysNewWordXp(results[0].results.length > 0, v.status) ? XP.newWord : 0, 'words');
   return json({ ok: true, parent: v.parent ? results[3].results[0] : null, xp });

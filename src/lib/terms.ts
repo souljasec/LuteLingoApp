@@ -23,8 +23,11 @@ export const statusSql = (col = 'status') => ({
   notIgnored: `${col} != ${IGNORED}`,
 });
 
+/** Text on one line: whitespace collapsed and trimmed, at most `max` characters. */
+const oneLine = (s: unknown, max: number) => String(s ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
+
 /** A saved term's text: lowercased, whitespace collapsed, at most 200 characters. */
-export const cleanTerm = (s: unknown) => String(s ?? '').replace(/\s+/g, ' ').trim().toLowerCase().slice(0, 200);
+export const cleanTerm = (s: unknown) => oneLine(s, Infinity).toLowerCase().slice(0, 200);
 
 /** What POST /api/words may set. parent: null leaves the link as is, '' unlinks. */
 export type TermInput = { term: string; translation: string; status: Status; parent: string | null; sentence: string };
@@ -38,10 +41,10 @@ export function parseTermInput(input: unknown): TermInput | null {
   if (!term || !isStatus(status) || parent === term) return null;
   return {
     term,
-    translation: String(b.translation ?? '').trim().slice(0, 500),
+    translation: String(b.translation ?? '').trim().slice(0, 500), // may keep line breaks
     status,
     parent,
-    sentence: String(b.sentence ?? '').replace(/\s+/g, ' ').trim().slice(0, 300),
+    sentence: oneLine(b.sentence, 300),
   };
 }
 
