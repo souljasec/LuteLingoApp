@@ -3,9 +3,8 @@ import { env } from 'cloudflare:workers';
 import { dueFor } from '../../lib/srs.ts';
 import { json } from '../../lib/http.ts';
 import { XP, award } from '../../lib/xp.ts';
-import { IGNORED, MAX_PHRASE, isStatus } from '../../lib/terms.ts';
+import { cleanTerm, isTooLong, parseTermInput, paysNewWordXp, type TermInput } from '../../lib/terms.ts';
 
-const clean = (s: unknown) => String(s ?? '').replace(/\s+/g, ' ').trim().toLowerCase().slice(0, 200);
 
 /**
  * Set a term: POST {term, translation, status, parent?}.
@@ -15,24 +14,15 @@ const clean = (s: unknown) => String(s ?? '').replace(/\s+/g, ' ').trim().toLowe
  * Returns the parent's {t, s} when linked, so the sheet can show it.
  * Remove a term: DELETE ?term=.
  */
-export const POST: APIRoute = async ({ request, locals }) => {
-  const user = locals.user!;
-  const body = (await request.json().catch(() => ({}))) as { term?: string; translation?: string; status?: number; parent?: string; sentence?: string };
-  const term = clean(body.term);
-  const translation = String(body.translation ?? '').trim().slice(0, 500);
-  const sentence = String(body.sentence ?? '').replace(/\s+/g, ' ').trim().slice(0, 300);
-  const status = Number(body.status ?? 1);
-  const parent = body.parent === undefined ? null : clean(body.parent);
-  if (!term || !isStatus(status) || parent === term) return json({ error: 'invalid' }, 400);
-  const now = Math.floor(Date.now() / 1000);
-  const exists = env.DB.prepare('SELECT 1 FROM saved_words WHERE user_id = ? AND term = ?').bind(user.id, term);
-  // New phrases are capped; long terms saved before the cap can still be changed or removed.
-  if (term.split(' ').length > MAX_PHRASE && !(await exists.first())) return json({ error: 'too long' }, 400);
+const exists = (userId: number, term: string) => env.DB.prepare('SELECT 1 FROM saved_words WHERE user_id = ? AND term = ?').bind(userId, term);
 
-  const stmts = [
+/** The batch that saves a term: [does it exist yet?, the upsert, then the parent's insert and read when linking]. */
+function saveStatements(userId: number, v: TermInput, now: number) {
+  const due = dueFor(v.status, now);
+  return [
     // XP only for a term marked for the first time, so changing levels back and forth earns nothing.
     // Checked inside the batch (one transaction), so parallel saves of a new word pay once.
-    exists,
+    exists(userId, v.term),
     // An empty translation never overwrites one we already have.
     env.DB.prepare(
       `INSERT INTO saved_words (user_id, term, translation, status, due_at, parent, sentence) VALUES (?1, ?2, ?3, ?4, ?5, coalesce(?6, ''), ?7)
@@ -42,25 +32,30 @@ export const POST: APIRoute = async ({ request, locals }) => {
          status = ?4,
          parent = coalesce(?6, saved_words.parent),
          sentence = CASE WHEN saved_words.sentence = '' THEN ?7 ELSE saved_words.sentence END`,
-    ).bind(user.id, term, translation, status, dueFor(status, now), parent, sentence),
+    ).bind(userId, v.term, v.translation, v.status, due, v.parent, v.sentence),
+    ...(v.parent
+      ? [
+          env.DB.prepare(`INSERT OR IGNORE INTO saved_words (user_id, term, translation, status, due_at) VALUES (?, ?, '', ?, ?)`)
+            .bind(userId, v.parent, v.status, due),
+          env.DB.prepare('SELECT translation AS t, status AS s FROM saved_words WHERE user_id = ? AND term = ?').bind(userId, v.parent),
+        ]
+      : []),
   ];
-  if (parent) {
-    stmts.push(
-      env.DB.prepare(
-        `INSERT OR IGNORE INTO saved_words (user_id, term, translation, status, due_at) VALUES (?, ?, '', ?, ?)`,
-      ).bind(user.id, parent, status, dueFor(status, now)),
-      env.DB.prepare('SELECT translation AS t, status AS s FROM saved_words WHERE user_id = ? AND term = ?').bind(user.id, parent),
-    );
-  }
-  const results = await env.DB.batch<{ t: string; s: number }>(stmts);
-  const existed = results[0].results.length > 0;
-  // Ignoring a word is not learning it.
-  const xp = await award(user, existed || status === IGNORED ? 0 : XP.newWord, 'words');
-  return json({ ok: true, parent: parent ? (results.at(-1)?.results[0] ?? null) : null, xp });
+}
+
+export const POST: APIRoute = async ({ request, locals }) => {
+  const user = locals.user!;
+  const v = parseTermInput(await request.json().catch(() => null));
+  if (!v) return json({ error: 'invalid' }, 400);
+  // New phrases are capped; long terms saved before the cap can still be changed or removed.
+  if (isTooLong(v.term) && !(await exists(user.id, v.term).first())) return json({ error: 'too long' }, 400);
+  const results = await env.DB.batch<{ t: string; s: number }>(saveStatements(user.id, v, Math.floor(Date.now() / 1000)));
+  const xp = await award(user, paysNewWordXp(results[0].results.length > 0, v.status) ? XP.newWord : 0, 'words');
+  return json({ ok: true, parent: v.parent ? results[3].results[0] : null, xp });
 };
 
 export const DELETE: APIRoute = async ({ url, locals }) => {
-  const term = clean(url.searchParams.get('term'));
+  const term = cleanTerm(url.searchParams.get('term'));
   await env.DB.prepare('DELETE FROM saved_words WHERE user_id = ? AND term = ?').bind(locals.user!.id, term).run();
   return json({ ok: true });
 };

@@ -271,3 +271,31 @@ test('class dashboard: streaks, daily chart, inactive students, order and totals
   assert.deepEqual(out.totals, { students: 3, active: 3, xp: 45, words: 9, texts: 6 });
   assert.deepEqual(summarizeClass([], [], days, now).totals, { students: 0, active: 0, xp: 0, words: 0, texts: 0 });
 });
+
+import { cleanTerm, parseTermInput } from '../src/lib/terms.ts';
+
+test('term input: cleaned and bounded, invalid input refused', () => {
+  assert.equal(cleanTerm('  Hello\n  World '), 'hello world');
+  assert.equal(cleanTerm(undefined), '');
+  assert.equal(cleanTerm('x'.repeat(300)).length, 200);
+  assert.deepEqual(parseTermInput({ term: ' Went ', translation: ' đi ', status: 3, parent: 'Go', sentence: ' We  went\nhome. ' }),
+    { term: 'went', translation: 'đi', status: 3, parent: 'go', sentence: 'We went home.' });
+  assert.deepEqual(parseTermInput({ term: 'cat' }), { term: 'cat', translation: '', status: 1, parent: null, sentence: '' }, 'defaults: level 1, parent left as is');
+  assert.equal(parseTermInput({ term: 'cat', parent: '' })?.parent, '', 'empty parent unlinks');
+  assert.equal(parseTermInput({ term: 'cat', status: '3' })?.status, 3, 'a level sent as text is read as a number');
+  assert.equal(parseTermInput({ term: 'x', translation: 'y'.repeat(600) })?.translation.length, 500);
+  assert.equal(parseTermInput({ term: 'x', sentence: 'y'.repeat(400) })?.sentence.length, 300);
+  for (const bad of [{}, { term: '  ' }, { term: 'cat', status: 7 }, { term: 'cat', parent: 'Cat' }, null, 'cat']) {
+    assert.equal(parseTermInput(bad), null, JSON.stringify(bad));
+  }
+});
+
+import { isTooLong, paysNewWordXp } from '../src/lib/terms.ts';
+
+test('phrase length and new-word XP', () => {
+  assert.equal(isTooLong('one two three four five'), false);
+  assert.equal(isTooLong('one two three four five six'), true);
+  assert.equal(paysNewWordXp(false, 1), true, 'a new word');
+  assert.equal(paysNewWordXp(true, 1), false, 'already saved');
+  assert.equal(paysNewWordXp(false, IGNORED), false, 'ignoring is not learning');
+});

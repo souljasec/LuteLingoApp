@@ -455,6 +455,18 @@ describe('security', { concurrency: false }, () => {
     assert.ok(await shows(other), 'second, unlimited class adds everything');
   });
 
+  test('B1 linking a base word creates it at the same level; an empty parent unlinks', { skip: !up && 'dev server not running' }, async () => {
+    const c = await new Client().signup('Linker');
+    const linked = await c.json('/api/words', { term: 'went', translation: 'đã đi', status: 3, parent: 'Go' });
+    assert.deepEqual(linked.body.parent, { t: '', s: 3 }, 'base word created and returned');
+    const rows = () => sql(`SELECT term, status, parent FROM saved_words w JOIN users u ON u.id = w.user_id WHERE u.email = '${c.email}' ORDER BY term`);
+    assert.deepEqual(rows().map((r) => [r.term, r.status, r.parent]), [['go', 3, ''], ['went', 3, 'go']]);
+    assert.equal((await c.json('/api/words', { term: 'went', status: 4 })).body.parent, null, 'parent omitted: link kept');
+    assert.equal(rows()[1].parent, 'go');
+    await c.json('/api/words', { term: 'went', status: 4, parent: '' });
+    assert.equal(rows()[1].parent, '', 'empty parent unlinks');
+  });
+
   test('P1 phrases: at most 5 words, and the source sentence is kept for flashcards', { skip: !up && 'dev server not running' }, async () => {
     const six = await alice.req('/api/words', { json: { term: 'one two three four five six', status: 1 } });
     assert.equal(six.status, 400);

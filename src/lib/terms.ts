@@ -22,3 +22,31 @@ export const statusSql = (col = 'status') => ({
   known: `${col} = ${KNOWN}`,
   notIgnored: `${col} != ${IGNORED}`,
 });
+
+/** A saved term's text: lowercased, whitespace collapsed, at most 200 characters. */
+export const cleanTerm = (s: unknown) => String(s ?? '').replace(/\s+/g, ' ').trim().toLowerCase().slice(0, 200);
+
+/** What POST /api/words may set. parent: null leaves the link as is, '' unlinks. */
+export type TermInput = { term: string; translation: string; status: Status; parent: string | null; sentence: string };
+
+/** The term body as values to save, or null when the term is empty, the status unknown or the term its own parent. */
+export function parseTermInput(input: unknown): TermInput | null {
+  const b = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>;
+  const term = cleanTerm(b.term);
+  const status = Number(b.status ?? 1);
+  const parent = b.parent === undefined ? null : cleanTerm(b.parent);
+  if (!term || !isStatus(status) || parent === term) return null;
+  return {
+    term,
+    translation: String(b.translation ?? '').trim().slice(0, 500),
+    status,
+    parent,
+    sentence: String(b.sentence ?? '').replace(/\s+/g, ' ').trim().slice(0, 300),
+  };
+}
+
+/** More words than a new phrase may have (sentences translate but aren't saved). */
+export const isTooLong = (term: string) => term.split(' ').length > MAX_PHRASE;
+
+/** New-word XP: only the first save of a term, and never for ignoring it. */
+export const paysNewWordXp = (existed: boolean, status: Status) => !existed && status !== IGNORED;
