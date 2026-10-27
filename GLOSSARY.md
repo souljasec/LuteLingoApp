@@ -15,7 +15,7 @@ The words this code uses for the domain, and where each one lives.
 | **Due** | A learning term whose next review time has passed. Only due cards can be answered | `saved_words.due_at`, `src/lib/srs.ts` |
 | **Flashcard review** | Answering a due card: "got it" moves up one status (5 → known), "not yet" goes back to 1 | `review` in `src/lib/srs.ts` |
 | **Text** | Something to read. Owned by the school (`owner_id` NULL) or by a student | `texts`, `src/lib/texts.ts` |
-| **Visibility** | Who may read a text: `all`, `classes` (linked classes only) or `private` (the owner only) | `VISIBLE` in `src/lib/texts.ts` |
+| **Visibility** | Who may read a text: `all`, `classes` (linked classes only) or `private` (the owner only) | `VISIBLE` in `src/lib/texts.ts`; who may choose which, and edit: `src/lib/text-policy.ts` |
 | **Class** | A group of students an admin manages, joined with a **join code** | `classes`, `class_members` |
 | **Class categories** | Categories a class limits its library to (a filter, not a lock) | `class_categories`, `ALLOWED` |
 | **XP** | Points for learning actions, from four **sources**: words, reviews, texts, games | `XP` in `src/lib/xp.ts` |

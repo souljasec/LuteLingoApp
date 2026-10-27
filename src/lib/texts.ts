@@ -56,10 +56,6 @@ export async function markOpened(user: User, textId: number) {
     .run();
 }
 
-/** Students edit only their own texts. Admins also edit school texts and students' class-shared ones (never private). */
-export const canEdit = (user: User, t: { owner_id: number | null; visibility: string }) =>
-  t.owner_id === user.id || (user.role === 'admin' && (t.owner_id === null || t.visibility === 'classes'));
-
 /** True the first time a text earns its finishing XP for this user (then never again). */
 export async function firstReward(user: User, textId: number) {
   const r = await env.DB.prepare(

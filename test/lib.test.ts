@@ -186,3 +186,56 @@ test('game words: one answer per question, sized per game', () => {
   assert.deepEqual(fill[0].s, ['I see ', 's0', ' here.']);
   assert.ok(fill.slice(10).every((w) => !w.s), 'then wrong choices');
 });
+
+import { canEdit, ownerFor, parseTextForm, textError, visibilityOptions } from '../src/lib/text-policy.ts';
+
+const student = { id: 7, role: 'student' as const };
+const teacher = { id: 1, role: 'admin' as const };
+
+test('who may edit a text', () => {
+  assert.equal(canEdit(student, { owner_id: 7, visibility: 'private' }), true, 'own text');
+  assert.equal(canEdit(student, { owner_id: null, visibility: 'all' }), false, 'school text');
+  assert.equal(canEdit(student, { owner_id: 8, visibility: 'classes' }), false, "a classmate's text");
+  assert.equal(canEdit(teacher, { owner_id: null, visibility: 'all' }), true, 'admin: school text');
+  assert.equal(canEdit(teacher, { owner_id: 8, visibility: 'classes' }), true, "admin: a student's class-shared text");
+  assert.equal(canEdit(teacher, { owner_id: 8, visibility: 'private' }), false, "admin: never a student's private text");
+});
+
+test('text form: bounded fields, allowed audience only', () => {
+  const form = (pairs: [string, string][]) => new URLSearchParams(pairs);
+  const base: [string, string][] = [['title', '  T  '], ['body', 'a\r\nb  '], ['category', ' Kids '], ['level', '9']];
+  const asStudent = { visibility: visibilityOptions(false), classIds: new Set([3, 4]), foreign: false, current: { visibility: 'private', classIds: [] } };
+  const v = parseTextForm(form([...base, ['visibility', 'all'], ['class', '3'], ['class', '99']]), asStudent);
+  assert.deepEqual(v, { title: 'T', body: 'a\nb', visibility: 'private', classIds: [3], category: 'Kids', level: 3 });
+  assert.equal(parseTextForm(form([['title', 'x'.repeat(300)], ...base.slice(1)]), asStudent).title.length, 200);
+  assert.equal(parseTextForm(form([...base.slice(0, 3), ['level', 'abc']]), asStudent).level, 0);
+  // An admin moderating a student's text changes only the content, never owner or audience.
+  const moderating = { ...asStudent, visibility: visibilityOptions(true), foreign: true, current: { visibility: 'classes', classIds: [4] } };
+  const m = parseTextForm(form([...base, ['visibility', 'all'], ['class', '3']]), moderating);
+  assert.deepEqual([m.visibility, m.classIds], ['classes', [4]]);
+  assert.deepEqual(visibilityOptions(true), ['all', 'classes', 'private']);
+  assert.deepEqual(visibilityOptions(false), ['private', 'classes']);
+});
+
+test('text checks, in order', () => {
+  const ok = { title: 'T', body: 'B', visibility: 'private', classIds: [] as number[] };
+  const none = { isNew: false, isAdmin: false, ownTexts: 0 };
+  assert.equal(textError(ok, none), null);
+  assert.equal(textError({ ...ok, title: '' , body: '' }, none), 'texts.errTitle');
+  assert.equal(textError({ ...ok, body: '' }, none), 'texts.errBody');
+  assert.equal(textError({ ...ok, body: 'x'.repeat(20_001) }, none), 'texts.errLong');
+  assert.equal(textError({ ...ok, body: 'x'.repeat(20_000) }, none), null);
+  assert.equal(textError({ ...ok, visibility: 'classes' }, none), 'texts.errClasses');
+  assert.equal(textError(ok, { isNew: true, isAdmin: false, ownTexts: 200 }), 'texts.errTooMany');
+  assert.equal(textError(ok, { isNew: true, isAdmin: false, ownTexts: 199 }), null);
+  assert.equal(textError(ok, { isNew: true, isAdmin: true, ownTexts: 500 }), null, 'no limit for admins');
+  assert.equal(textError(ok, { isNew: false, isAdmin: false, ownTexts: 200 }), null, 'editing is always allowed');
+});
+
+test('who owns a saved text', () => {
+  assert.equal(ownerFor(student, 'classes', null), 7);
+  assert.equal(ownerFor(teacher, 'all', null), null, 'school texts have no owner');
+  assert.equal(ownerFor(teacher, 'classes', null), null);
+  assert.equal(ownerFor(teacher, 'private', null), 1, "an admin's private text is theirs");
+  assert.equal(ownerFor(teacher, 'classes', 8), 8, 'moderating keeps the student as owner');
+});

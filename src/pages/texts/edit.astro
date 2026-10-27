@@ -1,12 +1,11 @@
 ---
 import { env } from 'cloudflare:workers';
 import App from '../../layouts/App.astro';
-import { canEdit } from '../../lib/texts.ts';
+import { MAX_BODY, canEdit, ownerFor, parseTextForm, textError, visibilityOptions } from '../../lib/text-policy.ts';
 
 const { t } = Astro.locals;
 const user = Astro.locals.user!;
 const isAdmin = user.role === 'admin';
-const MAX = 20_000;
 
 // ?id=N edits a text (owner or admin for school texts); no id creates one.
 const id = Number(Astro.url.searchParams.get('id')) || null;
@@ -31,7 +30,7 @@ const { results: knownCats } = await env.DB.prepare(
 )
   .bind(user.id)
   .all<{ category: string }>();
-const visOptions = isAdmin ? (['all', 'classes', 'private'] as const) : (['private', 'classes'] as const);
+const visOptions = visibilityOptions(isAdmin);
 const linked = existing
   ? (await env.DB.prepare('SELECT class_id FROM text_classes WHERE text_id = ?').bind(existing.id).all<{ class_id: number }>()).results.map((r) => r.class_id)
   : [];
@@ -55,30 +54,16 @@ if (Astro.request.method === 'POST') {
     return Astro.redirect(isAdmin && existing.owner_id === null ? '/admin/texts' : '/');
   }
 
-  v.title = String(f.get('title') ?? '').trim().slice(0, 200);
-  v.body = String(f.get('body') ?? '').replace(/\r\n/g, '\n').trim();
-  if (!foreign) {
-    v.visibility = String(f.get('visibility') ?? visOptions[0]);
-    if (!(visOptions as readonly string[]).includes(v.visibility)) v.visibility = visOptions[0];
-    const known = new Set(classes.map((c) => c.id));
-    v.classIds = f.getAll('class').map(Number).filter((c) => known.has(c));
-  }
-  v.category = String(f.get('category') ?? '').trim().slice(0, 40);
+  Object.assign(v, parseTextForm(f, { visibility: visOptions, classIds: new Set(classes.map((c) => c.id)), foreign, current: v }));
   // "kids" → "Kids": reuse the existing spelling so class category filters keep matching.
   const same = v.category && (await env.DB.prepare('SELECT category FROM texts WHERE lower(category) = lower(?) AND (owner_id IS NULL OR owner_id = ?) LIMIT 1').bind(v.category, user.id).first<{ category: string }>());
   if (same) v.category = same.category;
-  // Level is optional for everyone (0 = not set), so students can tag their own texts too.
-  v.level = Math.min(3, Math.max(0, Number(f.get('level')) || 0));
-
-  if (!v.title) error = t('texts.errTitle');
-  else if (!v.body) error = t('texts.errBody');
-  else if (v.body.length > MAX) error = t('texts.errLong');
-  else if (v.visibility === 'classes' && v.classIds.length === 0) error = t('texts.errClasses');
-  else if (!existing && !isAdmin) {
-    // Storage-abuse guard (THREATS.md D2): at most 200 own texts per student.
-    const n = await env.DB.prepare('SELECT count(*) AS n FROM texts WHERE owner_id = ?').bind(user.id).first<{ n: number }>();
-    if ((n?.n ?? 0) >= 200) error = t('texts.errTooMany');
-  }
+  // Storage-abuse guard (THREATS.md D2): only a student's new text needs their count.
+  const ownTexts = !existing && !isAdmin
+    ? ((await env.DB.prepare('SELECT count(*) AS n FROM texts WHERE owner_id = ?').bind(user.id).first<{ n: number }>())?.n ?? 0)
+    : 0;
+  const problem = textError(v, { isNew: !existing, isAdmin, ownTexts });
+  if (problem) error = t(problem);
 
   if (!error && foreign && f.get('action') === 'promote') {
     // Copy into the school library, credited by first name only. The student's own text is unchanged.
@@ -91,8 +76,7 @@ if (Astro.request.method === 'POST') {
   }
 
   if (!error) {
-    // Admin texts for everyone / classes belong to the school (no owner); private ones to the author.
-    const owner = foreign ? existing.owner_id : isAdmin && v.visibility !== 'private' ? null : user.id;
+    const owner = ownerFor(user, v.visibility, foreign ? existing.owner_id : null);
     // The text and its class links in one batch (one transaction), so a class text is never left
     // linked to no class. A new text's id is max(id): nothing else can insert inside the transaction.
     const id = 'coalesce(?1, (SELECT max(id) FROM texts))';
@@ -118,7 +102,7 @@ if (Astro.request.method === 'POST') {
     {error && <p class="error" role="alert">{error}</p>}
     <label>{t('texts.title')} <input type="text" name="title" value={v.title} maxlength="200" required /></label>
     <label>{t('texts.body')}
-      <textarea name="body" rows="14" maxlength={MAX} required lang="en">{v.body}</textarea>
+      <textarea name="body" rows="14" maxlength={MAX_BODY} required lang="en">{v.body}</textarea>
       <span class="hint">{t('texts.bodyHint')}</span>
     </label>
 
