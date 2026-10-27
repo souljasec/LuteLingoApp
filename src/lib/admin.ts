@@ -17,13 +17,16 @@ export type StudentRow = {
   learning: number;
 };
 
+/** A user's learning counts as SQL columns (known, learning, finished); `u` is the users table. */
+export const COUNTS = `
+    (SELECT count(*) FROM saved_words w WHERE w.user_id = u.id AND ${W.known}) AS known,
+    (SELECT count(*) FROM saved_words w WHERE w.user_id = u.id AND ${W.learning}) AS learning,
+    (SELECT count(*) FROM progress p WHERE p.user_id = u.id AND p.finished_at IS NOT NULL) AS finished`;
+
 // One row per user with their progress counts. `where` narrows it (e.g. to a class).
 const STUDENTS = `
   SELECT u.id, u.name, u.email, u.role, u.last_active_at, u.created_at,
-    (SELECT count(*) FROM progress p WHERE p.user_id = u.id) AS opened,
-    (SELECT count(*) FROM progress p WHERE p.user_id = u.id AND p.finished_at IS NOT NULL) AS finished,
-    (SELECT count(*) FROM saved_words w WHERE w.user_id = u.id AND ${W.known}) AS known,
-    (SELECT count(*) FROM saved_words w WHERE w.user_id = u.id AND ${W.learning}) AS learning
+    (SELECT count(*) FROM progress p WHERE p.user_id = u.id) AS opened, ${COUNTS}
   FROM users u`;
 
 export async function studentsInClass(classId: number) {

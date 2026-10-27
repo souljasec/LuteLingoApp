@@ -1,8 +1,9 @@
 // Class dashboard data: per-student progress, weekly totals, daily activity, popular texts.
 import { env } from 'cloudflare:workers';
-import { streakFrom, twoWeeks, localDay, weekStart } from './xp-dates.ts';
+import { streakFrom, streakStart, twoWeeks, weekStart } from './xp-dates.ts';
 import { locale } from '../brand/locale.ts';
 import { statusSql } from './terms.ts';
+import { COUNTS } from './admin.ts';
 
 const W = statusSql('w.status');
 
@@ -29,20 +30,17 @@ export async function classInsights(classId: number) {
   const weekTs = localMidnight(week);
   const [students, activity, topTexts] = await env.DB.batch<any>([
     env.DB.prepare(
-      `SELECT u.id, u.name, u.last_active_at,
-         (SELECT count(*) FROM saved_words w WHERE w.user_id = u.id AND ${W.known}) AS known,
-         (SELECT count(*) FROM saved_words w WHERE w.user_id = u.id AND ${W.learning}) AS learning,
-         (SELECT count(*) FROM progress p WHERE p.user_id = u.id AND p.finished_at IS NOT NULL) AS finished,
+      `SELECT u.id, u.name, u.last_active_at, ${COUNTS},
          (SELECT coalesce(sum(a.xp), 0) FROM activity a WHERE a.user_id = u.id AND a.day >= ?2) AS xp_week,
          (SELECT count(*) FROM saved_words w WHERE w.user_id = u.id AND ${W.notIgnored} AND w.created_at >= ?3) AS words_week,
          (SELECT count(*) FROM progress p WHERE p.user_id = u.id AND p.finished_at >= ?3) AS finished_week
        FROM class_members m JOIN users u ON u.id = m.user_id WHERE m.class_id = ?1`,
     ).bind(classId, week, weekTs),
-    // Active days for streaks (a year back is plenty) and daily XP for the chart.
+    // Active days for streaks and daily XP for the chart.
     env.DB.prepare(
       `SELECT a.user_id, a.day, a.xp FROM activity a JOIN class_members m ON m.user_id = a.user_id
        WHERE m.class_id = ? AND a.xp > 0 AND a.day >= ?`,
-    ).bind(classId, localDay(400)),
+    ).bind(classId, streakStart()),
     env.DB.prepare(
       `SELECT t.title, count(*) AS n FROM progress p
        JOIN class_members m ON m.user_id = p.user_id JOIN texts t ON t.id = p.text_id

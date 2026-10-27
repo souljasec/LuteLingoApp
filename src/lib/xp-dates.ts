@@ -8,6 +8,9 @@ export const TIME_ZONE = `Etc/GMT${locale.utcOffset > 0 ? '-' : '+'}${Math.abs(l
 /** YYYY-MM-DD at the school, `daysAgo` days back. */
 export const localDay = (daysAgo = 0, now = Date.now()) => new Date(now + OFFSET - daysAgo * 86_400_000).toISOString().slice(0, 10);
 
+/** First school date loaded to compute a streak: a year back is plenty. */
+export const streakStart = (now = Date.now()) => localDay(400, now);
+
 /** Monday of the current school week. */
 export function weekStart(now = Date.now()) {
   const d = new Date(now + OFFSET);

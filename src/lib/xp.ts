@@ -1,6 +1,6 @@
 // XP, daily goal, streak and weekly leaderboard (Duolingo-style). Days are school dates (locale.utcOffset).
 import { env } from 'cloudflare:workers';
-import { streakFrom, localDay, weekStart } from './xp-dates.ts';
+import { streakFrom, streakStart, localDay, weekStart } from './xp-dates.ts';
 
 export { streakFrom, localDay, weekStart };
 
@@ -10,10 +10,13 @@ export const CAPS = { words: 50, reviews: 100, texts: 50, games: 30 } as const;
 export type Source = keyof typeof CAPS;
 export type Today = { xp: number; goal: number; streak: number };
 
+/** A user's days with XP, far enough back for their streak. */
+export const activeDays = (userId: number) =>
+  env.DB.prepare('SELECT day, xp FROM activity WHERE user_id = ? AND day >= ? AND xp > 0').bind(userId, streakStart());
+
 export async function today(user: { id: number }): Promise<Today> {
   const [{ results }, u] = await env.DB.batch<any>([
-    // A year back is plenty for a streak.
-    env.DB.prepare('SELECT day, xp FROM activity WHERE user_id = ? AND day >= ? AND xp > 0').bind(user.id, localDay(400)),
+    activeDays(user.id),
     env.DB.prepare('SELECT daily_goal FROM users WHERE id = ?').bind(user.id),
   ]);
   const days = new Set<string>(results.map((r: { day: string }) => r.day));
