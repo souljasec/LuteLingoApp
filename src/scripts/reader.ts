@@ -9,6 +9,7 @@ import { brand } from '../brand/brand';
 import { locale } from '../brand/locale';
 import { baseForms } from '../lib/lemma.ts';
 import { exampleBold, googleText, isShortQuery, myMemoryResult, tatoebaExamples } from '../lib/meanings.ts';
+import { newParent, parentChoice, savedTerm, sourceSentence } from '../lib/sheet.ts';
 import { LEARNING, MAX_PHRASE, isStatus, statusClass, type Status, type Term } from '../lib/terms.ts';
 import { celebrate, xpFeedback } from './celebrate.ts';
 
@@ -24,6 +25,11 @@ let current = '';
 let currentVi = ''; // translation shown for `current`, saved along with a status
 let sentence = '';
 let acrossSentences = false; // a selection spanning two sentences is never saved
+
+/** The user's saved term for a word or phrase as shown, if any. */
+const known = (q: string): Term | undefined => config.terms[q.toLowerCase()];
+/** Its level; a term saved by linking a base word starts at 1. */
+const levelOf = (q: string) => known(q)?.s ?? 1;
 
 // ---- speech ---------------------------------------------------------------
 
@@ -79,31 +85,55 @@ async function translateHere(q: string): Promise<{ vi: string; alts: string[] }>
   return { vi: myMemoryResult(await r.json()).main, alts: [] };
 }
 
+/** The server's translation, or null when it refused or failed. Not logged in: off to the login page. */
+async function serverTranslation(q: string): Promise<{ vi?: string; alts?: string[] } | null> {
+  const r = await fetch('/api/translate?q=' + encodeURIComponent(q)).catch(() => null);
+  if (r?.status === 401) location.assign('/login');
+  return r?.ok ? r.json() : null;
+}
+
+const saveTerm = (body: { term: string; translation: string; status: Status; parent?: string; sentence?: string }) =>
+  fetch('/api/words', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+
+/** Server first; when its sources refuse Cloudflare's IPs, straight from this phone. Null when both fail. */
+async function lookUp(q: string) {
+  const j = await serverTranslation(q);
+  return j?.vi ? j : translateHere(q).catch(() => null);
+}
+
 async function translate(q: string) {
-  const vi = $('vi');
-  vi.className = isShortQuery(q) ? 'vi' : 'vi long';
-  // A saved term shows its own translation at once (as in Lute); the lookup only adds alternatives.
-  const own = config.terms[q.toLowerCase()]?.t;
-  vi.textContent = own || '…';
-  currentVi = own || '';
+  const own = showOwn(q);
+  const j = await lookUp(q);
+  if (q === current) showResult(j, own); // else the user already tapped another word
+}
+
+/** The looked-up meaning, unless the term's own is already shown; an error only when there is nothing to show. */
+function showResult(j: { vi?: string; alts?: string[] } | null, own: string) {
+  if (j?.vi) showMeaning(j.vi, j.alts ?? [], !own);
+  else if (!own) showFailed();
+}
+
+/** A saved term shows its own translation at once (as in Lute); the lookup only adds alternatives. Returns it. */
+function showOwn(q: string) {
+  const own = known(q)?.t || '';
+  $('vi').className = isShortQuery(q) ? 'vi' : 'vi long';
+  $('vi').textContent = own || '…';
   $('alts').textContent = '';
-  try {
-    const r = await fetch('/api/translate?q=' + encodeURIComponent(q));
-    if (r.status === 401) return location.assign('/login');
-    let j = r.ok ? await r.json() : null;
-    if (!j?.vi) j = await translateHere(q);
-    if (q !== current) return; // user already tapped another word
-    if (!j.vi) throw new Error();
-    if (!own) {
-      vi.textContent = j.vi;
-      currentVi = j.vi;
-    }
-    if (j.alts?.length) $('alts').textContent = config.i18n.other + ': ' + j.alts.join(', ');
-  } catch {
-    if (q !== current || own) return;
-    vi.className = 'vi err';
-    vi.textContent = config.i18n.failed;
+  currentVi = own;
+  return own;
+}
+
+function showMeaning(meaning: string, alts: string[], replace: boolean) {
+  if (replace) {
+    $('vi').textContent = meaning;
+    currentVi = meaning;
   }
+  if (alts.length) $('alts').textContent = config.i18n.other + ': ' + alts.join(', ');
+}
+
+function showFailed() {
+  $('vi').className = 'vi err';
+  $('vi').textContent = config.i18n.failed;
 }
 
 const TATOEBA = { vi: 'vie', id: 'ind' }[locale.translateTo];
@@ -171,70 +201,65 @@ function recolour(term: string, s: number | undefined) {
 // "went" can be linked to its base word "go": the panel then shows go's meaning too.
 
 function showParent(q: string) {
-  const term = q.toLowerCase();
   const box = $('parent-box');
   box.hidden = q.includes(' ');
   if (box.hidden) return;
-  const parent = config.terms[term]?.p;
+  const parent = config.terms[q.toLowerCase()]?.p;
   $('parent-linked').hidden = !parent;
   $('parent-pick').hidden = !!parent;
   ($('parent-form') as HTMLFormElement).hidden = true;
-  if (parent) {
-    const el = $('parent-text');
-    el.replaceChildren();
-    const b = document.createElement('b');
-    b.textContent = parent;
-    el.append(b);
-    const pt = config.terms[parent]?.t;
-    if (pt) el.append(' · ' + pt);
-    else fillParentMeaning(parent);
-    return;
-  }
-  const chips = $('parent-chips');
-  chips.replaceChildren();
-  for (const base of baseForms(term)) {
-    const c = document.createElement('button');
-    c.className = 'chip';
-    c.textContent = base;
-    c.onclick = () => linkParent(base);
-    chips.append(c);
-  }
+  if (parent) showLinked(parent);
+  else showSuggestions(q.toLowerCase());
+}
+
+/** The linked base word and its meaning (looked up once if it has none yet). */
+function showLinked(parent: string) {
+  const el = $('parent-text');
+  const b = document.createElement('b');
+  b.textContent = parent;
+  el.replaceChildren(b);
+  const meaning = config.terms[parent]?.t;
+  if (meaning) el.append(' · ' + meaning);
+  else fillParentMeaning(parent);
+}
+
+/** One chip per suggested base word; a tap links it. */
+function showSuggestions(term: string) {
+  $('parent-chips').replaceChildren(
+    ...baseForms(term).map((base) => {
+      const c = document.createElement('button');
+      c.className = 'chip';
+      c.textContent = base;
+      c.onclick = () => linkParent(base);
+      return c;
+    }),
+  );
 }
 
 /** A parent created by linking has no meaning yet: look it up once and save it with the parent. */
 async function fillParentMeaning(parent: string) {
-  const r = await fetch('/api/translate?q=' + encodeURIComponent(parent)).catch(() => null);
-  const j = r?.ok ? await r.json() : null;
+  const j = await serverTranslation(parent);
   if (!j?.vi) return;
-  const s = config.terms[parent]?.s ?? 1;
-  config.terms[parent] = { ...config.terms[parent], t: j.vi, s };
-  await fetch('/api/words', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ term: parent, translation: j.vi, status: s }),
-  });
-  if (config.terms[current.toLowerCase()]?.p === parent) showParent(current);
+  config.terms[parent] = savedTerm(known(parent), j.vi, levelOf(parent));
+  await saveTerm({ term: parent, translation: j.vi, status: config.terms[parent].s });
+  if (known(current)?.p === parent) showParent(current);
 }
 
-async function linkParent(parent: string | null) {
+async function linkParent(input: string | null) {
   const term = current.toLowerCase();
-  const p = parent?.trim().toLowerCase() ?? '';
-  if (p === term) return;
-  const status = config.terms[term]?.s ?? 1;
-  const r = await fetch('/api/words', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ term, translation: currentVi, status, parent: p, sentence: term === sentence.toLowerCase() ? '' : sentence }),
-  });
+  const p = parentChoice(term, input);
+  if (p === null) return;
+  const status = levelOf(term);
+  const r = await saveTerm({ term, translation: currentVi, status, parent: p, sentence: sourceSentence(term, sentence) });
   if (!r.ok) return;
   const j = await r.json();
   xpFeedback(j.xp);
-  const had = term in config.terms;
-  config.terms[term] = { t: currentVi || config.terms[term]?.t || '', s: status, ...(p ? { p } : {}) };
-  if (!had) recolour(term, status);
-  if (p && j.parent && !(p in config.terms)) {
-    config.terms[p] = j.parent;
-    recolour(p, j.parent.s);
+  config.terms[term] = savedTerm(config.terms[term], currentVi, status, p);
+  recolour(term, status); // a word linked before it had a level gets one
+  const added = newParent(p, j.parent, config.terms);
+  if (added) {
+    config.terms[p] = added;
+    recolour(p, added.s);
   }
   showStatus(current);
   showParent(current);
@@ -260,21 +285,22 @@ function showStatus(q: string) {
   $('remove').hidden = s === undefined;
 }
 
-async function setStatus(s: Status | null) {
+async function setStatus(s: Status) {
   const term = current.toLowerCase();
-  const r =
-    s === null
-      ? await fetch('/api/words?term=' + encodeURIComponent(term), { method: 'DELETE' })
-      : await fetch('/api/words', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ term, translation: currentVi, status: s, sentence: term === sentence.toLowerCase() ? '' : sentence }),
-        });
+  const r = await saveTerm({ term, translation: currentVi, status: s, sentence: sourceSentence(term, sentence) });
   if (!r.ok) return;
-  if (s !== null) xpFeedback((await r.json()).xp);
-  if (s === null) delete config.terms[term];
-  else config.terms[term] = { t: currentVi || config.terms[term]?.t || '', s };
-  recolour(term, s ?? undefined);
+  xpFeedback((await r.json()).xp);
+  config.terms[term] = savedTerm(config.terms[term], currentVi, s); // keeps its base word, as the server does
+  recolour(term, s);
+  showStatus(current);
+}
+
+async function removeTerm() {
+  const term = current.toLowerCase();
+  const r = await fetch('/api/words?term=' + encodeURIComponent(term), { method: 'DELETE' });
+  if (!r.ok) return;
+  delete config.terms[term];
+  recolour(term, undefined);
   showStatus(current);
 }
 
@@ -282,7 +308,7 @@ $('status-box').addEventListener('click', (e) => {
   const s = Number((e.target as HTMLElement).closest<HTMLElement>('[data-s]')?.dataset.s);
   if (isStatus(s)) setStatus(s);
 });
-$('remove').addEventListener('click', () => setStatus(null));
+$('remove').addEventListener('click', removeTerm);
 
 // ---- sheet ----------------------------------------------------------------
 

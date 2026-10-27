@@ -382,3 +382,26 @@ test('example highlighting: the looked-up words, ignoring capitals and punctuati
   const bold = exampleBold('Harbour lights');
   assert.deepEqual(['harbour.', 'Lights,', 'the', "harbour's"].map(bold), [true, true, false, false]);
 });
+
+import { sourceSentence, savedTerm, parentChoice, newParent } from '../src/lib/sheet.ts';
+
+test('reader panel: saving a term keeps what the panel knows', () => {
+  assert.equal(sourceSentence('harbour', 'The harbour is busy.'), 'The harbour is busy.');
+  assert.equal(sourceSentence('the harbour is busy.', 'The harbour is busy.'), '', 'a whole sentence is not its own example');
+  const went = { t: 'đi', s: 2 as const, p: 'go' };
+  assert.deepEqual(savedTerm(went, '', 4), { t: 'đi', s: 4, p: 'go' }, 'a new level keeps the meaning and the base word');
+  assert.deepEqual(savedTerm(went, 'đã đi', 4), { t: 'đã đi', s: 4, p: 'go' }, 'the meaning shown wins');
+  assert.deepEqual(savedTerm(undefined, '', 1), { t: '', s: 1 });
+  assert.deepEqual(savedTerm(went, '', 2, ''), { t: 'đi', s: 2 }, "'' unlinks");
+  assert.deepEqual(savedTerm(went, '', 2, 'leave'), { t: 'đi', s: 2, p: 'leave' });
+});
+
+test('reader panel: choosing a base word', () => {
+  assert.equal(parentChoice('went', '  Go '), 'go');
+  assert.equal(parentChoice('went', null), '', 'unlink');
+  assert.equal(parentChoice('went', 'Went'), null, 'never itself');
+  const terms = { went: { t: '', s: 2 as const } };
+  assert.deepEqual(newParent('go', { t: '', s: 2 }, terms), { t: '', s: 2 }, 'a base word the panel did not have');
+  assert.equal(newParent('went', { t: '', s: 2 }, terms), null, 'already known');
+  assert.equal(newParent('', null, terms), null, 'unlinking adds nothing');
+});
