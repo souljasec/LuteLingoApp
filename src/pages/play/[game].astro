@@ -1,13 +1,21 @@
 ---
 import App from '../../layouts/App.astro';
-import { GAMES, gameWords, type Game } from '../../lib/games.ts';
+import { env } from 'cloudflare:workers';
+import { GAMES, pickGameWords, type Game } from '../../lib/games.ts';
+import { statusSql } from '../../lib/terms.ts';
 
 const { t } = Astro.locals;
 const user = Astro.locals.user!;
 const game = Astro.params.game as Game;
 if (!GAMES.includes(game)) return Astro.redirect('/words');
 
-const words = await gameWords(user, game);
+// A random sample of the user's saved words, never ignored ones; pickGameWords makes the round.
+const { results: saved } = await env.DB.prepare(
+  `SELECT term, translation, sentence FROM saved_words WHERE user_id = ? AND ${statusSql().notIgnored} ORDER BY random() LIMIT 80`,
+)
+  .bind(user.id)
+  .all<{ term: string; translation: string; sentence: string }>();
+const words = pickGameWords(saved, game);
 const config = {
   game,
   words,

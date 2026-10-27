@@ -1,24 +1,17 @@
-import { env } from 'cloudflare:workers';
 import { gapSplit } from './tokenize.ts';
-import { statusSql } from './terms.ts';
 
 export const GAMES = ['match', 'listen', 'fill'] as const;
 export type Game = (typeof GAMES)[number];
 export type GameWord = { t: string; m: string; s?: [string, string, string] };
 
 /**
- * Up to 15 random saved words for a game (never ignored ones), no two sharing a term or a
- * meaning, so every question has exactly one answer. Empty when there aren't enough to play.
+ * Up to 15 words for a game from a sample of saved words (the page draws them at random, never
+ * ignored ones), no two sharing a term or a meaning, so every question has exactly one answer. Empty when there aren't enough to play.
  * match: multiple of 5, all with a meaning. listen: ≥ 5 with a meaning (questions are the
  * first 10, the rest are wrong choices). fill: ≥ 5 words found in their saved sentence come
  * first (the questions, up to 10), then other words as wrong choices.
  */
-export async function gameWords(user: { id: number }, game: Game): Promise<GameWord[]> {
-  const { results } = await env.DB.prepare(
-    `SELECT term, translation, sentence FROM saved_words WHERE user_id = ? AND ${statusSql().notIgnored} ORDER BY random() LIMIT 80`,
-  )
-    .bind(user.id)
-    .all<{ term: string; translation: string; sentence: string }>();
+export function pickGameWords(results: { term: string; translation: string; sentence: string }[], game: Game): GameWord[] {
   const seen = new Set<string>();
   const words: GameWord[] = [];
   for (const r of results) {

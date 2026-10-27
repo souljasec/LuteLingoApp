@@ -159,3 +159,30 @@ test('other meanings: split lists, drop the main meaning, repeats, English echoe
   assert.deepEqual(otherMeanings(alts, 'thủ đô', 'he flew'), ['tiền vốn', 'vốn', 'trung tâm', 'thủ phủ', 'a', 'b']);
   assert.deepEqual(otherMeanings([], 'x', 'y'), []);
 });
+
+import { pickGameWords } from '../src/lib/games.ts';
+
+test('game words: one answer per question, sized per game', () => {
+  const row = (term: string, translation = `nghĩa ${term}`, sentence = '') => ({ term, translation, sentence });
+  const rows = (n: number, f = (i: number) => row(`w${i}`)) => Array.from({ length: n }, (_, i) => f(i));
+  // Shared terms or meanings are skipped; the first meaning is used, long ones are cut.
+  const picked = pickGameWords([row('a', 'một; thứ nhất'), row('A', 'khác'), row('b', 'một'), row('c', 'x'.repeat(60)), row('d', '')], 'listen');
+  assert.deepEqual(picked, [], 'fewer than 5 usable words: no listen game');
+  const five = pickGameWords([row('a', 'một; thứ nhất'), row('A', 'khác'), row('b', 'một'), row('c', 'x'.repeat(60)), row('d', ''), ...rows(3)], 'listen');
+  assert.deepEqual(five.map((w) => w.t), ['a', 'c', 'w0', 'w1', 'w2']);
+  assert.equal(five[0].m, 'một');
+  assert.equal(five[1].m, 'x'.repeat(47) + '…');
+  // match: a multiple of 5, at most 15. listen: at most 15.
+  assert.equal(pickGameWords(rows(14), 'match').length, 10);
+  assert.equal(pickGameWords(rows(40), 'match').length, 15);
+  assert.equal(pickGameWords(rows(4), 'match').length, 0);
+  assert.equal(pickGameWords(rows(40), 'listen').length, 15);
+  // fill: words found in their sentence come first (up to 10 questions, at least 5), then wrong choices.
+  const withSentence = (i: number) => row(`s${i}`, '', `I see s${i} here.`);
+  assert.deepEqual(pickGameWords([...rows(10), ...rows(4, withSentence)], 'fill'), [], 'fewer than 5 questions');
+  const fill = pickGameWords([...rows(10), ...rows(12, withSentence)], 'fill');
+  assert.equal(fill.length, 15);
+  assert.ok(fill.slice(0, 10).every((w) => w.s), 'questions first');
+  assert.deepEqual(fill[0].s, ['I see ', 's0', ' here.']);
+  assert.ok(fill.slice(10).every((w) => !w.s), 'then wrong choices');
+});
