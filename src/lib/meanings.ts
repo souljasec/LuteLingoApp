@@ -21,6 +21,9 @@ export function otherMeanings(alts: string[], main: string, query: string): stri
   }).slice(0, 6);
 }
 
+/** Words and short phrases (up to 3 words) get other meanings, examples and the shared cache; longer ones are sentences. */
+export const isShortQuery = (q: string) => q.trim().split(/\s+/).length <= 3;
+
 export type TranslationQuery = { q: string; key: string; cacheable: boolean };
 
 /** The ?q= of a translation request, or null when empty. Words and short phrases are cached for
@@ -29,7 +32,7 @@ export function translationQuery(raw: string | null): TranslationQuery | null {
   const q = (raw ?? '').trim().slice(0, 500);
   if (!q) return null;
   const key = q.toLowerCase();
-  return { q, key, cacheable: key.split(/\s+/).length <= 3 };
+  return { q, key, cacheable: isShortQuery(key) };
 }
 
 /** Google's dict-chrome-ex reply: [["meaning", …]] for words, ["meaning"] for some phrases. */
@@ -48,4 +51,20 @@ export const mainMeaning = (google: string | undefined, mymemory: string | undef
 export function translationAnswer(query: TranslationQuery, google: string | undefined, mymemory: { main: string; alts: string[] } | undefined) {
   const vi = mainMeaning(google, mymemory?.main);
   return { vi, alts: query.cacheable ? otherMeanings(mymemory?.alts ?? [], vi, query.key) : [] };
+}
+
+export type Example = { en: string; tr: string };
+
+/** Up to 3 Tatoeba sentences with a translation in `lang` (Tatoeba's code), skipping ones under 4 words. */
+export function tatoebaExamples(data: any[] | undefined, lang: string): Example[] {
+  return (data ?? [])
+    .map((s) => ({ en: String(s.text), tr: (s.translations ?? []).flat().find((t: any) => t.lang === lang)?.text as string | undefined }))
+    .filter((x): x is Example => !!x.tr && x.en.split(/\s+/).length >= 4)
+    .slice(0, 3);
+}
+
+/** Whether a word of an example sentence is one of the looked-up words (any capitals, punctuation stripped). */
+export function exampleBold(q: string) {
+  const qw = q.toLowerCase().split(/\s+/);
+  return (t: string) => qw.includes(t.toLowerCase().replace(/[^\p{L}\p{N}']/gu, ''));
 }

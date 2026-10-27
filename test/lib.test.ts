@@ -352,3 +352,33 @@ test('loading terms: row shape, chunked lookups, parents still to load', () => {
   const terms = { went: { t: '', s: 3 as const, p: 'go' }, gone: { t: '', s: 1 as const, p: 'go' }, ran: { t: '', s: 1 as const, p: 'run' }, run: { t: '', s: 2 as const } };
   assert.deepEqual(missingParents(terms), ['go'], 'once each, and not when already loaded');
 });
+
+import { isShortQuery, tatoebaExamples, exampleBold } from '../src/lib/meanings.ts';
+
+test('short queries: up to 3 words get examples, other meanings and the cache', () => {
+  assert.equal(isShortQuery('long time ago'), true);
+  assert.equal(isShortQuery('  long   time ago '), true, 'spacing does not count');
+  assert.equal(isShortQuery('once upon a time'), false);
+});
+
+test('Tatoeba examples: translated into our language, at least 4 words, at most 3', () => {
+  const s = (text: string, tr?: { lang: string; text: string }) => ({ text, translations: tr ? [[tr]] : [] });
+  const data = [
+    s('Too short.', { lang: 'vie', text: 'Ngắn.' }),
+    s('I have no translation here.'),
+    s('The harbour is very busy.', { lang: 'ind', text: 'Pelabuhan sibuk.' }),
+    s('We walked to the harbour.', { lang: 'vie', text: 'Chúng tôi đi bộ ra bến cảng.' }),
+    s('The harbour lights are on.', { lang: 'vie', text: 'Đèn bến cảng đã bật.' }),
+    s('Ships leave the harbour early.', { lang: 'vie', text: 'Tàu rời cảng sớm.' }),
+    s('A fourth good example sentence.', { lang: 'vie', text: 'Câu thứ tư.' }),
+  ];
+  assert.deepEqual(tatoebaExamples(data, 'vie').map((x) => x.en), ['We walked to the harbour.', 'The harbour lights are on.', 'Ships leave the harbour early.']);
+  assert.equal(tatoebaExamples(data, 'vie')[0].tr, 'Chúng tôi đi bộ ra bến cảng.');
+  assert.deepEqual(tatoebaExamples(data, 'ind').map((x) => x.tr), ['Pelabuhan sibuk.']);
+  assert.deepEqual(tatoebaExamples(undefined, 'vie'), []);
+});
+
+test('example highlighting: the looked-up words, ignoring capitals and punctuation', () => {
+  const bold = exampleBold('Harbour lights');
+  assert.deepEqual(['harbour.', 'Lights,', 'the', "harbour's"].map(bold), [true, true, false, false]);
+});

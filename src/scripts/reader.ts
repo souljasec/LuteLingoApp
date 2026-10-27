@@ -8,6 +8,7 @@ import { pickVoice } from './voice.ts';
 import { brand } from '../brand/brand';
 import { locale } from '../brand/locale';
 import { baseForms } from '../lib/lemma.ts';
+import { exampleBold, googleText, isShortQuery, myMemoryResult, tatoebaExamples } from '../lib/meanings.ts';
 import { LEARNING, MAX_PHRASE, isStatus, statusClass, type Status, type Term } from '../lib/terms.ts';
 import { celebrate, xpFeedback } from './celebrate.ts';
 
@@ -70,20 +71,17 @@ function say(text: string, el: HTMLElement) {
 // Direct lookups from the phone: used when the server's sources refuse Cloudflare's shared IPs (429).
 // Each phone has its own IP, like the Lute panel had. Results are not written to the shared cache.
 async function translateHere(q: string): Promise<{ vi: string; alts: string[] }> {
-  try {
-    const r = await fetch('https://clients5.google.com/translate_a/t?client=dict-chrome-ex&sl=en&tl=' + locale.translateTo + '&q=' + encodeURIComponent(q));
-    const j: any = await r.json();
-    const vi = Array.isArray(j[0]) ? j[0][0] : j[0];
-    if (vi) return { vi, alts: [] };
-  } catch {}
+  const g = await fetch('https://clients5.google.com/translate_a/t?client=dict-chrome-ex&sl=en&tl=' + locale.translateTo + '&q=' + encodeURIComponent(q))
+    .then(async (r) => googleText(await r.json()))
+    .catch(() => ''); // blocked, offline or not JSON: try MyMemory
+  if (g) return { vi: g, alts: [] };
   const r = await fetch('https://api.mymemory.translated.net/get?langpair=en|' + locale.translateTo + '&q=' + encodeURIComponent(q));
-  const j: any = await r.json();
-  return { vi: j.responseData?.translatedText ?? '', alts: [] };
+  return { vi: myMemoryResult(await r.json()).main, alts: [] };
 }
 
 async function translate(q: string) {
   const vi = $('vi');
-  vi.className = q.split(/\s+/).length > 3 ? 'vi long' : 'vi';
+  vi.className = isShortQuery(q) ? 'vi' : 'vi long';
   // A saved term shows its own translation at once (as in Lute); the lookup only adds alternatives.
   const own = config.terms[q.toLowerCase()]?.t;
   vi.textContent = own || '…';
@@ -115,19 +113,14 @@ async function examples(q: string) {
   const list = $('ex-list');
   box.hidden = true;
   list.replaceChildren();
-  if (q.split(/\s+/).length > 3) return;
+  if (!isShortQuery(q)) return;
   try {
     const r = await fetch(
       'https://api.tatoeba.org/unstable/sentences?lang=eng&sort=relevance&limit=20&trans:lang=' + TATOEBA + '&q=' + encodeURIComponent(q),
     );
-    const data: any[] = (await r.json()).data ?? [];
-    const items = data
-      .map((s) => ({ en: String(s.text), vi: (s.translations ?? []).flat().find((t: any) => t.lang === TATOEBA)?.text as string | undefined }))
-      .filter((x) => x.vi && x.en.split(/\s+/).length >= 4)
-      .slice(0, 3);
+    const items = tatoebaExamples((await r.json()).data, TATOEBA);
     if (q !== current || !items.length) return;
-    const qw = q.toLowerCase().split(/\s+/);
-    const isBold = (t: string) => qw.includes(t.toLowerCase().replace(/[^\p{L}\p{N}']/gu, ''));
+    const isBold = exampleBold(q);
     for (const x of items) {
       const row = document.createElement('div');
       row.className = 'exi';
@@ -141,7 +134,7 @@ async function examples(q: string) {
       b.onclick = () => say(x.en, en);
       const tr = document.createElement('div');
       tr.className = 'tr';
-      tr.textContent = x.vi!;
+      tr.textContent = x.tr;
       const col = document.createElement('div');
       col.append(en, tr);
       row.append(b, col);
@@ -322,7 +315,7 @@ function openSheet(a: HTMLElement, b: HTMLElement = a) {
   acrossSentences = a.closest('.s') !== b.closest('.s');
   $('whole').hidden = !sentence || sentence === q;
   $('sheet').hidden = false;
-  show(q, q.split(' ').length <= 3);
+  show(q, isShortQuery(q));
   requestAnimationFrame(() => keepVisible(a, b));
 }
 
