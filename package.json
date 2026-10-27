@@ -2,7 +2,7 @@
   "name": "lutelingo-app",
   "type": "module",
   "private": true,
-  "version": "1.4.0",
+  "version": "1.5.0",
   "license": "AGPL-3.0-or-later",
   "author": "souljasec (https://github.com/souljasec)",
   "scripts": {
