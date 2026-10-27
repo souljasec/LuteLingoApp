@@ -340,3 +340,15 @@ test('flashcard answer input', () => {
   assert.deepEqual(parseReviewInput(null), { term: '', correct: false, translation: '' });
   assert.equal(parseReviewInput({ term: 'x', translation: 'y'.repeat(600) }).translation.length, 500);
 });
+
+import { toTerm, chunks, missingParents } from '../src/lib/terms.ts';
+
+test('loading terms: row shape, chunked lookups, parents still to load', () => {
+  assert.deepEqual(toTerm({ term: 'went', translation: 'đi', status: 3, parent: 'go' }), { t: 'đi', s: 3, p: 'go' });
+  assert.deepEqual(toTerm({ term: 'go', translation: 'đi', status: 3, parent: '' }), { t: 'đi', s: 3 }, 'no parent key when unlinked');
+  assert.deepEqual(chunks([1, 2, 3, 4, 5], 2), [[1, 2], [3, 4], [5]]);
+  assert.deepEqual(chunks([], 2), []);
+  assert.equal(chunks(Array.from({ length: 181 }, (_, i) => i)).length, 3, '90 per lookup by default');
+  const terms = { went: { t: '', s: 3 as const, p: 'go' }, gone: { t: '', s: 1 as const, p: 'go' }, ran: { t: '', s: 1 as const, p: 'run' }, run: { t: '', s: 2 as const } };
+  assert.deepEqual(missingParents(terms), ['go'], 'once each, and not when already loaded');
+});

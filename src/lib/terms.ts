@@ -50,3 +50,17 @@ export const isTooLong = (term: string) => term.split(' ').length > MAX_PHRASE;
 
 /** New-word XP: only the first save of a term, and never for ignoring it. */
 export const paysNewWordXp = (existed: boolean, status: Status) => !existed && status !== IGNORED;
+
+/** A saved term as the reader gets it: translation, status, and parent when linked. */
+export type Term = { t: string; s: Status; p?: string };
+export type TermRow = { term: string; translation: string; status: Status; parent: string };
+export const toTerm = (r: TermRow): Term => (r.parent ? { t: r.translation, s: r.status, p: r.parent } : { t: r.translation, s: r.status });
+
+/** D1 caps bound parameters per query, so long lists are looked up in chunks of this size. */
+export const LOOKUP_CHUNK = 90;
+export const chunks = <T>(list: T[], size = LOOKUP_CHUNK): T[][] =>
+  Array.from({ length: Math.ceil(list.length / size) }, (_, i) => list.slice(i * size, (i + 1) * size));
+
+/** Parents the terms link to but don't include yet ("go" for "went"), at most one lookup's worth. */
+export const missingParents = (terms: Record<string, Term>) =>
+  [...new Set(Object.values(terms).flatMap((x) => (x.p && !terms[x.p] ? [x.p] : [])))].slice(0, LOOKUP_CHUNK);

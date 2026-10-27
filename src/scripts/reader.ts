@@ -8,8 +8,7 @@ import { pickVoice } from './voice.ts';
 import { brand } from '../brand/brand';
 import { locale } from '../brand/locale';
 import { baseForms } from '../lib/lemma.ts';
-import { LEARNING, MAX_PHRASE, isStatus, statusClass, type Status } from '../lib/terms.ts';
-import type { Term } from '../lib/texts.ts';
+import { LEARNING, MAX_PHRASE, isStatus, statusClass, type Status, type Term } from '../lib/terms.ts';
 import { celebrate, xpFeedback } from './celebrate.ts';
 
 const $ = (id: string) => document.getElementById(id)!;

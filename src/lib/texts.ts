@@ -1,5 +1,5 @@
 import { env } from 'cloudflare:workers';
-import { statusSql, type Status } from './terms.ts';
+import { chunks, missingParents, statusSql, toTerm, type Term, type TermRow } from './terms.ts';
 
 const S = statusSql();
 
@@ -73,42 +73,22 @@ export async function getProgress(user: User, textId: number) {
     .first<{ finished_at: number | null }>();
 }
 
-export type Term = { t: string; s: Status; p?: string }; // translation, status, parent term
+const SELECT_TERMS = 'SELECT term, translation, status, parent FROM saved_words WHERE user_id = ?';
+const byTerms = (userId: number, terms: string[]) =>
+  env.DB.prepare(`${SELECT_TERMS} AND term IN (${terms.map(() => '?').join(',')})`).bind(userId, ...terms);
 
 /**
  * The user's terms relevant to a text: every single word that occurs in it, plus all their
- * multi-word terms (matched against the text by findPhrases).
+ * multi-word terms (matched against the text by findPhrases), plus the parents those link to.
  */
 export async function termsFor(user: User, words: string[]) {
   const out: Record<string, Term> = {};
-  const unique = [...new Set(words)];
-  type Row = { term: string; translation: string; status: Status; parent: string };
-  const add = ({ results }: { results: Row[] }) => {
-    for (const r of results) out[r.term] = r.parent ? { t: r.translation, s: r.status, p: r.parent } : { t: r.translation, s: r.status };
-  };
-  // D1 caps bound parameters per query, so look up in chunks.
-  const queries = [];
-  for (let i = 0; i < unique.length; i += 90) {
-    const chunk = unique.slice(i, i + 90);
-    queries.push(
-      env.DB.prepare(
-        `SELECT term, translation, status, parent FROM saved_words WHERE user_id = ? AND term IN (${chunk.map(() => '?').join(',')})`,
-      ).bind(user.id, ...chunk),
-    );
-  }
-  queries.push(env.DB.prepare("SELECT term, translation, status, parent FROM saved_words WHERE user_id = ? AND term LIKE '% %'").bind(user.id));
-  for (const r of await env.DB.batch<Row>(queries)) add(r);
+  const add = ({ results }: { results: TermRow[] }) => results.forEach((r) => (out[r.term] = toTerm(r)));
+  const lookups = chunks([...new Set(words)]).map((c) => byTerms(user.id, c));
+  (await env.DB.batch<TermRow>([...lookups, env.DB.prepare(`${SELECT_TERMS} AND term LIKE '% %'`).bind(user.id)])).forEach(add);
   // Parents of these terms ("go" for "went"), so the sheet can show their meaning.
-  const parents = [...new Set(Object.values(out).flatMap((x) => (x.p && !out[x.p] ? [x.p] : [])))].slice(0, 90);
-  if (parents.length) {
-    add(
-      await env.DB.prepare(
-        `SELECT term, translation, status, parent FROM saved_words WHERE user_id = ? AND term IN (${parents.map(() => '?').join(',')})`,
-      )
-        .bind(user.id, ...parents)
-        .all<Row>(),
-    );
-  }
+  const parents = missingParents(out);
+  if (parents.length) add(await byTerms(user.id, parents).all<TermRow>());
   return out;
 }
 

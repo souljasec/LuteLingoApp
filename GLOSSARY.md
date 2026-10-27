@@ -4,7 +4,7 @@ The words this code uses for the domain, and where each one lives.
 
 | Term | Meaning | Code |
 |---|---|---|
-| **Term** | A word or phrase a student has saved, lowercased. One row in `saved_words` per student and term | `saved_words`, `Term` in `src/lib/texts.ts` |
+| **Term** | A word or phrase a student has saved, lowercased. One row in `saved_words` per student and term | `saved_words`, `Term` in `src/lib/terms.ts` |
 | **Status** (level) | How well the student knows a term: **learning** 1–5, **ignored** 98, **known** 99. A word with no status is **new** | `src/lib/terms.ts` |
 | **Learning** | Status 1 (just met) to 5 (almost known). Only learning terms are coloured in the text and become flashcards | `LEARNING`, `isLearning` |
 | **Known** | Status 99. Plain in the text, never reviewed | `KNOWN` |
