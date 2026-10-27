@@ -213,6 +213,8 @@ test('text form: bounded fields, allowed audience only', () => {
   const moderating = { ...asStudent, visibility: visibilityOptions(true), foreign: true, current: { visibility: 'classes', classIds: [4] } };
   const m = parseTextForm(form([...base, ['visibility', 'all'], ['class', '3']]), moderating);
   assert.deepEqual([m.visibility, m.classIds], ['classes', [4]]);
+  assert.equal(parseTextForm(form([...base, ['visibility', 'classes']]), asStudent).visibility, 'classes', 'an allowed choice is kept');
+  assert.deepEqual(parseTextForm(form([]), asStudent), { title: '', body: '', visibility: 'private', classIds: [], category: '', level: 0 }, 'empty form');
   assert.deepEqual(visibilityOptions(true), ['all', 'classes', 'private']);
   assert.deepEqual(visibilityOptions(false), ['private', 'classes']);
 });
