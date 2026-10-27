@@ -1,6 +1,7 @@
 import type { APIRoute } from 'astro';
 import { env } from 'cloudflare:workers';
 import { locale } from '../../brand/locale.ts';
+import { json } from '../../lib/http.ts';
 
 const TL = locale.translateTo;
 
@@ -24,9 +25,6 @@ async function mymemory(q: string): Promise<{ main: string; alts: string[] }> {
   const alts = [...new Set<string>((j.matches ?? []).map((m: any) => String(m.translation).trim()))].slice(0, 5);
   return { main: j.responseData?.translatedText, alts };
 }
-
-const json = (data: unknown, status = 200) =>
-  new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json' } });
 
 export const GET: APIRoute = async ({ url, locals }) => {
   if (!locals.user) return json({ error: 'auth' }, 401);

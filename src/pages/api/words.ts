@@ -1,11 +1,10 @@
 import type { APIRoute } from 'astro';
 import { env } from 'cloudflare:workers';
 import { dueFor } from '../../lib/srs.ts';
+import { json } from '../../lib/http.ts';
 import { XP, award } from '../../lib/xp.ts';
 import { IGNORED, MAX_PHRASE, isStatus } from '../../lib/terms.ts';
 
-const json = (data: unknown, status = 200) =>
-  new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json' } });
 const clean = (s: unknown) => String(s ?? '').replace(/\s+/g, ' ').trim().toLowerCase().slice(0, 200);
 
 /**

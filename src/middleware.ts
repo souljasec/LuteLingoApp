@@ -2,6 +2,7 @@ import { defineMiddleware } from 'astro:middleware';
 import { getUser } from './lib/auth.ts';
 import { isLang, translator } from './lib/i18n.ts';
 import { locale } from './brand/locale.ts';
+import { json } from './lib/http.ts';
 
 const PUBLIC = ['/login', '/signup', '/privacy', '/about', '/lang'];
 
@@ -18,7 +19,7 @@ export const onRequest = defineMiddleware(async (ctx, next) => {
   const path = ctx.url.pathname;
 
   if (!user && !PUBLIC.includes(path)) {
-    if (path.startsWith('/api/')) return new Response('{"error":"auth"}', { status: 401 });
+    if (path.startsWith('/api/')) return json({ error: 'auth' }, 401);
     return ctx.redirect('/login');
   }
   if (path.startsWith('/admin') && user?.role !== 'admin') return ctx.redirect('/');
