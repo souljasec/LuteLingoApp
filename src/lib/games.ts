@@ -11,25 +11,46 @@ export type GameWord = { t: string; m: string; s?: [string, string, string] };
  * first 10, the rest are wrong choices). fill: ≥ 5 words found in their saved sentence come
  * first (the questions, up to 10), then other words as wrong choices.
  */
-export function pickGameWords(results: { term: string; translation: string; sentence: string }[], game: Game): GameWord[] {
+type SavedWord = { term: string; translation: string; sentence: string };
+
+/** The first meaning of a saved translation, short enough for a button. */
+const firstMeaning = (translation: string) => {
+  const m = translation.split(/[;\n]/)[0].trim();
+  return m.length > 48 ? m.slice(0, 47) + '…' : m;
+};
+
+/** A saved word as a game word; fill also blanks it in its sentence when it is found there. */
+function toGameWord(r: SavedWord, game: Game): GameWord {
+  const m = firstMeaning(r.translation);
+  const s = game === 'fill' && r.sentence ? gapSplit(r.sentence, r.term) : null;
+  return s ? { t: r.term, m, s } : { t: r.term, m };
+}
+
+/** Drops words without a meaning (fill can do without) and any word repeating an earlier term or meaning. */
+function oneAnswerEach(words: GameWord[], game: Game): GameWord[] {
   const seen = new Set<string>();
-  const words: GameWord[] = [];
-  for (const r of results) {
-    let m = r.translation.split(/[;\n]/)[0].trim();
-    if (m.length > 48) m = m.slice(0, 47) + '…';
-    if (!m && game !== 'fill') continue;
-    const keys = [`t:${r.term.toLowerCase()}`, ...(m ? [`m:${m.toLowerCase()}`] : [])];
-    if (keys.some((k) => seen.has(k))) continue;
+  return words.filter((w) => {
+    if (!w.m && game !== 'fill') return false;
+    const keys = [`t:${w.t.toLowerCase()}`, ...(w.m ? [`m:${w.m.toLowerCase()}`] : [])];
+    if (keys.some((k) => seen.has(k))) return false;
     keys.forEach((k) => seen.add(k));
-    const s = game === 'fill' && r.sentence ? gapSplit(r.sentence, r.term) : null;
-    words.push(s ? { t: r.term, m, s } : { t: r.term, m });
-  }
-  if (game === 'match') {
+    return true;
+  });
+}
+
+/** How each game sizes its round from the usable words. */
+const ROUND: Record<Game, (words: GameWord[]) => GameWord[]> = {
+  match: (words) => {
     const w = words.slice(0, 15);
     return w.slice(0, w.length - (w.length % 5));
-  }
-  if (game === 'listen') return words.length >= 5 ? words.slice(0, 15) : [];
-  const questions = words.filter((w) => w.s).slice(0, 10);
-  if (questions.length < 5) return [];
-  return [...questions, ...words.filter((w) => !w.s).slice(0, 15 - questions.length)];
+  },
+  listen: (words) => (words.length >= 5 ? words.slice(0, 15) : []),
+  fill: (words) => {
+    const questions = words.filter((w) => w.s).slice(0, 10);
+    return questions.length < 5 ? [] : [...questions, ...words.filter((w) => !w.s).slice(0, 15 - questions.length)];
+  },
+};
+
+export function pickGameWords(results: SavedWord[], game: Game): GameWord[] {
+  return ROUND[game](oneAnswerEach(results.map((r) => toGameWord(r, game)), game));
 }
