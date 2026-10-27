@@ -192,6 +192,21 @@ describe('security', { concurrency: false }, () => {
     assert.equal((await extra.req(`/read/${id}`)).status, 404);
   });
 
+  test('Z3b a new text shared with two classes is linked to both', { skip: !up && 'dev server not running' }, async () => {
+    const r2 = await admin.req('/admin', { form: { name: `Second ${RUN}` } });
+    const classB = Number(location(r2).split('/').pop());
+    const codeB = sql(`SELECT join_code FROM classes WHERE id = ${classB}`)[0].join_code;
+    const r = await admin.req('/texts/edit', {
+      body: new URLSearchParams([['title', `Two classes ${RUN}`], ['body', 'For A and B.'], ['visibility', 'classes'], ['class', String(classA)], ['class', String(classB)], ['action', 'save']]),
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    });
+    const id = Number(location(r).split('/').pop());
+    assert.deepEqual(sql(`SELECT class_id FROM text_classes WHERE text_id = ${id} ORDER BY class_id`).map((x) => x.class_id), [classA, classB].sort((a, b) => a - b));
+    const inB = await new Client().signup('InB', { code: codeB });
+    assert.equal((await inB.req(`/read/${id}`)).status, 200);
+    assert.equal((await alice.req(`/read/${id}`)).status, 200);
+  });
+
   test('Z4 progress refuses texts the user cannot see', { skip: !up && 'dev server not running' }, async () => {
     const hidden = sql(`SELECT id FROM texts WHERE visibility = 'classes' AND title = 'Class only ${RUN}'`)[0].id;
     assert.equal((await bob.json('/api/progress', { text_id: hidden, finished: true })).status, 404);
@@ -353,6 +368,15 @@ describe('security', { concurrency: false }, () => {
       form: { name: 'Long', email: `long.${RUN}@test.example`, password: 'x'.repeat(201), consent: 'on' },
     });
     assert.notEqual(await alert(long), '');
+  });
+
+  test('I2b sign-ups racing for one email make one account and one class membership', { skip: !up && 'dev server not running' }, async () => {
+    const email = `racer.${RUN}@test.example`;
+    const tries = await Promise.all(Array.from({ length: 5 }, () =>
+      new Client().req('/signup', { form: { name: 'Race', email, password: 'pass-word-123', consent: 'on', code: classCode } })));
+    assert.equal(tries.filter((r) => r.status === 302).length, 1, 'exactly one sign-up succeeds');
+    assert.equal(sql(`SELECT count(*) AS n FROM users WHERE email = '${email}'`)[0].n, 1);
+    assert.equal(sql(`SELECT count(*) AS n FROM class_members m JOIN users u ON u.id = m.user_id WHERE u.email = '${email}'`)[0].n, 1);
   });
 
   test('D2 a student can keep at most 200 own texts', { skip: !up && 'dev server not running' }, async () => {

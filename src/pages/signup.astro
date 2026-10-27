@@ -39,14 +39,20 @@ if (Astro.request.method === 'POST') {
   if (!error) {
     // The language chosen on this page becomes the account's interface language.
     // INSERT OR IGNORE: two sign-ups racing for one email get the friendly message, not a 500.
-    const user = await env.DB.prepare(
-      'INSERT OR IGNORE INTO users (email, name, password_hash, ui_lang) VALUES (?, ?, ?, ?) RETURNING id',
-    )
-      .bind(v.email, v.name, await hashPassword(password), lang)
-      .first<{ id: number }>();
+    // One batch (one transaction), so an account never exists without its class. The membership
+    // matches this request's salted hash, so a sign-up that lost the race adds nobody.
+    const hash = await hashPassword(password);
+    const [created] = await env.DB.batch<{ id: number }>([
+      env.DB.prepare('INSERT OR IGNORE INTO users (email, name, password_hash, ui_lang) VALUES (?, ?, ?, ?) RETURNING id')
+        .bind(v.email, v.name, hash, lang),
+      ...(classId
+        ? [env.DB.prepare('INSERT INTO class_members (class_id, user_id) SELECT ?, id FROM users WHERE email = ? AND password_hash = ?')
+            .bind(classId, v.email, hash)]
+        : []),
+    ]);
+    const user = created.results[0];
     if (!user) error = t('signup.errExists');
     else {
-      if (classId) await env.DB.prepare('INSERT INTO class_members (class_id, user_id) VALUES (?, ?)').bind(classId, user.id).run();
       await createSession(Astro.cookies, user.id, Astro.url.protocol === 'https:');
       return Astro.redirect('/');
     }

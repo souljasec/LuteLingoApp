@@ -93,24 +93,22 @@ if (Astro.request.method === 'POST') {
   if (!error) {
     // Admin texts for everyone / classes belong to the school (no owner); private ones to the author.
     const owner = foreign ? existing.owner_id : isAdmin && v.visibility !== 'private' ? null : user.id;
-    let textId = existing?.id;
-    if (existing) {
-      await env.DB.prepare('UPDATE texts SET title = ?, body = ?, visibility = ?, owner_id = ?, category = ?, level = ?, updated_at = unixepoch() WHERE id = ?')
-        .bind(v.title, v.body, v.visibility, owner, v.category, v.level, existing.id)
-        .run();
-    } else {
-      const row = await env.DB.prepare('INSERT INTO texts (title, body, visibility, owner_id, category, level) VALUES (?, ?, ?, ?, ?, ?) RETURNING id')
-        .bind(v.title, v.body, v.visibility, owner, v.category, v.level)
-        .first<{ id: number }>();
-      textId = row!.id;
-    }
-    await env.DB.batch([
-      env.DB.prepare('DELETE FROM text_classes WHERE text_id = ?').bind(textId),
+    // The text and its class links in one batch (one transaction), so a class text is never left
+    // linked to no class. A new text's id is max(id): nothing else can insert inside the transaction.
+    const id = 'coalesce(?1, (SELECT max(id) FROM texts))';
+    const known = existing?.id ?? null;
+    const [written] = await env.DB.batch<{ id: number }>([
+      existing
+        ? env.DB.prepare('UPDATE texts SET title = ?, body = ?, visibility = ?, owner_id = ?, category = ?, level = ?, updated_at = unixepoch() WHERE id = ? RETURNING id')
+            .bind(v.title, v.body, v.visibility, owner, v.category, v.level, existing.id)
+        : env.DB.prepare('INSERT INTO texts (title, body, visibility, owner_id, category, level) VALUES (?, ?, ?, ?, ?, ?) RETURNING id')
+            .bind(v.title, v.body, v.visibility, owner, v.category, v.level),
+      env.DB.prepare(`DELETE FROM text_classes WHERE text_id = ${id}`).bind(known),
       ...(v.visibility === 'classes' ? v.classIds : []).map((c) =>
-        env.DB.prepare('INSERT INTO text_classes (text_id, class_id) VALUES (?, ?)').bind(textId, c),
+        env.DB.prepare(`INSERT INTO text_classes (text_id, class_id) SELECT ${id}, ?2`).bind(known, c),
       ),
     ]);
-    return Astro.redirect(`/read/${textId}`);
+    return Astro.redirect(`/read/${written.results[0].id}`);
   }
 }
 ---
