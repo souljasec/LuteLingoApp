@@ -405,3 +405,18 @@ test('reader panel: choosing a base word', () => {
   assert.equal(newParent('went', { t: '', s: 2 }, terms), null, 'already known');
   assert.equal(newParent('', null, terms), null, 'unlinking adds nothing');
 });
+
+import { sortEnglish, chooseVoice } from '../src/lib/voices.ts';
+
+test('voices: English only, US first, offline first; the saved choice, else the school default', () => {
+  const v = (name: string, lang = 'en-US', localService = true, isDefault = false) => ({ name, lang, localService, default: isDefault, voiceURI: `uri:${name}` });
+  const all = [v('Zed', 'en-GB'), v('Bells'), v('Online', 'en-US', false), v('Linh', 'vi-VN'), v('Alex'), v('Kate', 'en-gb')];
+  assert.deepEqual(sortEnglish(all).map((x) => x.name), ['Alex', 'Online', 'Kate', 'Zed'], 'no novelty or non-English voices');
+  const us = [v('Alex'), v('Samantha (Enhanced)'), v('Phone', 'en-US', true, true), v('Online', 'en-US', false)];
+  assert.equal(chooseVoice(us, 'uri:Alex')?.name, 'Alex', 'the saved choice');
+  assert.equal(chooseVoice(us, 'uri:gone')?.name, 'Samantha (Enhanced)', 'saved voice missing: school default');
+  assert.equal(chooseVoice([v('Online', 'en-US', false), v('Phone', 'en-US', false, true)], '')?.name, 'Phone', "then the phone's default US voice");
+  assert.equal(chooseVoice([v('Online', 'en-US', false), v('Alex')], '')?.name, 'Alex', 'then an offline US voice');
+  assert.equal(chooseVoice([v('Kate', 'en-GB', false)], '')?.name, 'Kate', 'then any English voice');
+  assert.equal(chooseVoice([], ''), undefined);
+});
