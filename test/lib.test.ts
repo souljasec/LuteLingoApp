@@ -142,3 +142,20 @@ test('join codes: retried on collision, given up after 5 tries', async () => {
   assert.equal(await tryJoinCodes(async () => (tries++, null)), null);
   assert.equal(tries, 5);
 });
+
+import { cleanMeaning, otherMeanings } from '../src/lib/meanings.ts';
+
+test('translation clean-up: markup, list dashes, final stops, accents', () => {
+  assert.equal(cleanMeaning('<g id="1">thủ đô</g>'), 'thủ đô');
+  assert.equal(cleanMeaning('- Anh đã bay.'), 'Anh đã bay');
+  assert.equal(cleanMeaning('  bến   cảng  '), 'bến cảng');
+  assert.equal(cleanMeaning('a > b'), 'a b', 'stray brackets go');
+  const decomposed = 'cà phê'; // "cà" with a combining accent
+  assert.equal(cleanMeaning(decomposed), 'cà phê', 'NFC: the same accents compare equal');
+});
+
+test('other meanings: split lists, drop the main meaning, repeats, English echoes and non-words', () => {
+  const alts = ['thủ đô, tiền vốn', 'Thủ đô', 'vốn; tiền vốn', 'He flew', '123', 'trung tâm/thủ phủ', 'a', 'b', 'c', 'd'];
+  assert.deepEqual(otherMeanings(alts, 'thủ đô', 'he flew'), ['tiền vốn', 'vốn', 'trung tâm', 'thủ phủ', 'a', 'b']);
+  assert.deepEqual(otherMeanings([], 'x', 'y'), []);
+});

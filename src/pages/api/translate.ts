@@ -2,6 +2,7 @@ import type { APIRoute } from 'astro';
 import { env } from 'cloudflare:workers';
 import { locale } from '../../brand/locale.ts';
 import { json } from '../../lib/http.ts';
+import { cleanMeaning, otherMeanings } from '../../lib/meanings.ts';
 
 const TL = locale.translateTo;
 
@@ -42,21 +43,10 @@ export const GET: APIRoute = async ({ url, locals }) => {
 
   const [g, m] = await Promise.allSettled([google(q), mymemory(q)]);
   for (const r of [g, m]) if (r.status === 'rejected') console.error('translate source failed:', String(r.reason));
-  // NFC: the two services can encode the same Vietnamese accents differently.
-  // MyMemory sometimes returns markup fragments like '<g id="1">'; strip tags and stray brackets.
-  const norm = (s: string) =>
-    s.normalize('NFC').replace(/<[^>]*>?|[^\s<>]*>/g, '').replace(/[<>]/g, '').replace(/\s+/g, ' ').trim()
-      .replace(/^[-–•\s]+|[.。\s]+$/g, ''); // "- Anh đã bay." → "Anh đã bay"
-  const vi = norm(g.status === 'fulfilled' && g.value ? g.value : m.status === 'fulfilled' ? m.value.main || '' : '');
+  const vi = cleanMeaning(g.status === 'fulfilled' && g.value ? g.value : m.status === 'fulfilled' ? m.value.main || '' : '');
   if (!vi) return json({ error: 'unavailable' }, 502);
-  const seen = new Set([vi.toLowerCase()]);
   // Other meanings only help for words and short phrases; for sentences they are noise.
-  // Entries like "thủ đô, tiền vốn" are split so the main meaning isn't repeated inside them.
-  const alts = (m.status === 'fulfilled' && cacheable ? m.value.alts : []).flatMap((a) => a.split(/[,;/]/)).map(norm).filter((a) => {
-    const k = a.toLowerCase();
-    // Must contain a letter, and not the English word itself (MyMemory returns fragments like "He flew").
-    return /\p{L}/u.test(a) && !k.includes(key) && !seen.has(k) && seen.add(k);
-  }).slice(0, 6);
+  const alts = otherMeanings(m.status === 'fulfilled' && cacheable ? m.value.alts : [], vi, key);
 
   if (cacheable) {
     await env.DB.prepare('INSERT OR REPLACE INTO translation_cache (term, vi, alts) VALUES (?, ?, ?)')
