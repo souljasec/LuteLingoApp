@@ -17,3 +17,13 @@ export function review(status: Learning, correct: boolean, now: number): { statu
   const next = status + 1;
   return next > LEARNING.at(-1)! ? { status: KNOWN, due: 0 } : { status: next as Learning, due: now + INTERVAL[next as Learning] };
 }
+
+/** A flashcard answer: POST {term, correct, translation?}. translation: a meaning looked up while the card was shown. */
+export function parseReviewInput(input: unknown) {
+  const b = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>;
+  return {
+    term: String(b.term ?? '').trim().toLowerCase(),
+    correct: !!b.correct,
+    translation: String(b.translation ?? '').trim().slice(0, 500),
+  };
+}

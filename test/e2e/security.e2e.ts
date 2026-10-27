@@ -301,6 +301,19 @@ describe('security', { concurrency: false }, () => {
     assert.equal(again.status, 409, 'not due again for 10 minutes');
   });
 
+  test('R1 a correct answer moves a due card up a level for 2 XP; unknown and known words are refused', { skip: !up && 'dev server not running' }, async () => {
+    const c = await new Client().signup('Reviewer');
+    await c.json('/api/words', { term: 'anchor', status: 1 });
+    await c.json('/api/words', { term: 'rope', status: 99 });
+    const r = await c.json('/api/review', { term: ' Anchor ', correct: true, translation: 'mỏ neo' });
+    assert.equal(r.status, 200);
+    assert.equal(r.body.status, 2);
+    assert.equal(r.body.xp.gained, 2);
+    assert.equal(sql(`SELECT translation FROM saved_words w JOIN users u ON u.id = w.user_id WHERE u.email = '${c.email}' AND term = 'anchor'`)[0].translation, 'mỏ neo', 'meaning kept when none was saved');
+    assert.equal((await c.json('/api/review', { term: 'nothing', correct: true })).status, 404);
+    assert.equal((await c.json('/api/review', { term: 'rope', correct: true })).status, 404, 'known words are not cards');
+  });
+
   test('X2 new-word XP is capped per day', { skip: !up && 'dev server not running' }, async () => {
     const c = await new Client().signup('Farmer');
     let total = 0;

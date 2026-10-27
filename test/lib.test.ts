@@ -331,3 +331,12 @@ test('translation answer: other meanings only for short queries', () => {
   assert.deepEqual(translationAnswer(sentence, 'thủ đô lớn', mm), { vi: 'thủ đô lớn', alts: [] });
   assert.deepEqual(translationAnswer(word, undefined, undefined), { vi: '', alts: [] });
 });
+
+import { parseReviewInput } from '../src/lib/srs.ts';
+
+test('flashcard answer input', () => {
+  assert.deepEqual(parseReviewInput({ term: ' Harbour ', correct: true, translation: ' bến cảng ' }), { term: 'harbour', correct: true, translation: 'bến cảng' });
+  assert.deepEqual(parseReviewInput({ term: 'x', correct: 'yes' }), { term: 'x', correct: true, translation: '' }, 'any truthy answer counts as correct');
+  assert.deepEqual(parseReviewInput(null), { term: '', correct: false, translation: '' });
+  assert.equal(parseReviewInput({ term: 'x', translation: 'y'.repeat(600) }).translation.length, 500);
+});
