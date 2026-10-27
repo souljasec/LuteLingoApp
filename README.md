@@ -324,7 +324,7 @@ All starter texts use only *to be*, present simple, past simple and future simpl
 - Forgot-password emails: needs a domain verified with an email provider (e.g. Resend).
 - Official translation API (see "Translation: move to an official API").
 - Not yet ported from Lute: pages for long texts, "where else did I see this word", Anki export.
-- More languages to learn (Arabic, Russian, Chinese first): see [ROADMAP.md](ROADMAP.md).
+- Language profiles: each student picks the language they learn, starting with Spanish, French and German: see [ROADMAP.md](ROADMAP.md).
 
 ## Credits
 
