@@ -1,6 +1,7 @@
 // Class dashboard data: per-student progress, weekly totals, daily activity, popular texts.
 import { env } from 'cloudflare:workers';
-import { streakFrom, streakStart, twoWeeks, weekStart } from './xp-dates.ts';
+import { streakStart, twoWeeks, weekStart } from './xp-dates.ts';
+import { summarizeClass } from './class-summary.ts';
 import { locale } from '../brand/locale.ts';
 import { statusSql } from './terms.ts';
 import { COUNTS } from './admin.ts';
@@ -9,21 +10,6 @@ const W = statusSql('w.status');
 
 /** Unix seconds of a school date at 00:00. */
 const localMidnight = (day: string) => Date.parse(day + 'T00:00:00Z') / 1000 - locale.utcOffset * 3600;
-
-export type StudentInsight = {
-  id: number;
-  name: string;
-  last_active_at: number | null;
-  known: number;
-  learning: number;
-  finished: number;
-  xp_week: number;
-  words_week: number;
-  finished_week: number;
-  streak: number;
-  daily: number[]; // XP per day, Monday last week → Sunday this week (days still to come: 0)
-  inactive: boolean; // no activity for 7+ days (or never)
-};
 
 export async function classInsights(classId: number) {
   const week = weekStart();
@@ -49,34 +35,9 @@ export async function classInsights(classId: number) {
     ).bind(classId),
   ]);
 
-  const days = new Map<number, Set<string>>();
-  const xpOn = new Map<string, number>();
-  for (const r of activity.results as { user_id: number; day: string; xp: number }[]) {
-    if (!days.has(r.user_id)) days.set(r.user_id, new Set());
-    days.get(r.user_id)!.add(r.day);
-    xpOn.set(`${r.user_id}|${r.day}`, r.xp);
-  }
   const days14 = twoWeeks();
-  const weekAgo = Date.now() / 1000 - 7 * 86_400;
-  const list: StudentInsight[] = (students.results as Omit<StudentInsight, 'streak' | 'daily' | 'inactive'>[])
-    .map((s) => ({
-      ...s,
-      streak: streakFrom(days.get(s.id) ?? new Set()),
-      daily: days14.map((d) => xpOn.get(`${s.id}|${d}`) ?? 0),
-      inactive: !s.last_active_at || s.last_active_at < weekAgo,
-    }))
-    .sort((a, b) => b.xp_week - a.xp_week || a.name.localeCompare(b.name));
-
-  const sum = (k: keyof StudentInsight) => list.reduce((n, s) => n + Number(s[k]), 0);
   return {
-    students: list,
-    totals: {
-      students: list.length,
-      active: list.filter((s) => s.xp_week > 0).length,
-      xp: sum('xp_week'),
-      words: sum('words_week'),
-      texts: sum('finished_week'),
-    },
+    ...summarizeClass(students.results, activity.results, days14),
     days: days14,
     topTexts: topTexts.results as { title: string; n: number }[],
   };

@@ -20,7 +20,7 @@ The words this code uses for the domain, and where each one lives.
 | **Class categories** | Categories a class limits its library to (a filter, not a lock) | `class_categories`, `ALLOWED` |
 | **XP** | Points for learning actions, from four **sources**: words, reviews, texts, games | `XP` in `src/lib/xp.ts` |
 | **Cap** | The most XP one source can pay in one school day | `CAPS` |
-| **Daily goal** | The XP a student aims for each day: 10, 20, 30 or 50 | `GOALS` |
+| **Daily goal** | The XP a student aims for each day: 10, 20, 30 or 50 | `GOALS` in `src/lib/prefs.ts` |
 | **School day** | A calendar date in the school's time zone (`locale.utcOffset`), not UTC | `localDay` in `src/lib/xp-dates.ts` |
 | **Streak** | School days in a row with XP, ending today, or yesterday if today has none yet | `streakFrom` |
 | **Leaderboard week** | Monday to Sunday, school time. XP rankings reset every Monday | `weekStart` |

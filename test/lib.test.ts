@@ -239,3 +239,32 @@ test('who owns a saved text', () => {
   assert.equal(ownerFor(teacher, 'private', null), 1, "an admin's private text is theirs");
   assert.equal(ownerFor(teacher, 'classes', 8), 8, 'moderating keeps the student as owner');
 });
+
+import { summarizeClass } from '../src/lib/class-summary.ts';
+
+test('class dashboard: streaks, daily chart, inactive students, order and totals', () => {
+  const now = Date.UTC(2026, 9, 23, 18, 0); // Sat 24 Oct, school time
+  const nowS = now / 1000;
+  const days = ['2026-10-12', '2026-10-13', '2026-10-24']; // a short chart for the test
+  const s = (id: number, name: string, xp_week: number, last_active_at: number | null) =>
+    ({ id, name, last_active_at, known: 1, learning: 2, finished: 0, xp_week, words_week: 3, finished_week: id });
+  const out = summarizeClass(
+    [s(1, 'Binh', 10, nowS - 3600), s(2, 'An', 10, nowS - 8 * 86_400), s(3, 'Chi', 25, null)],
+    [
+      { user_id: 1, day: '2026-10-24', xp: 6 }, { user_id: 1, day: '2026-10-23', xp: 4 },
+      { user_id: 3, day: '2026-10-12', xp: 25 },
+    ],
+    days,
+    now,
+  );
+  assert.deepEqual(out.students.map((x) => x.name), ['Chi', 'An', 'Binh'], 'most XP first, ties by name');
+  const binh = out.students[2];
+  assert.equal(binh.streak, 2);
+  assert.deepEqual(binh.daily, [0, 0, 6]);
+  assert.equal(binh.inactive, false);
+  assert.equal(out.students[1].inactive, true, '8 days without activity');
+  assert.equal(out.students[0].inactive, true, 'never active');
+  assert.deepEqual(out.students[0].daily, [25, 0, 0]);
+  assert.deepEqual(out.totals, { students: 3, active: 3, xp: 45, words: 9, texts: 6 });
+  assert.deepEqual(summarizeClass([], [], days, now).totals, { students: 0, active: 0, xp: 0, words: 0, texts: 0 });
+});

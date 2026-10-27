@@ -3,7 +3,7 @@
 // with the weekly reset of the numbers above. Darker square = more XP that day; the bottom row
 // counts active students per day. Hover/tap a square for its numbers. Refreshes itself while visible.
 import Icon from './Icon.astro';
-import type { StudentInsight } from '../lib/insights.ts';
+import type { StudentInsight } from '../lib/class-summary.ts';
 import { localDay, TIME_ZONE } from '../lib/xp-dates.ts';
 import { INTL } from '../lib/i18n.ts';
 interface Props { students: StudentInsight[]; days: string[] }
