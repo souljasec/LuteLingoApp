@@ -8,8 +8,8 @@ import { pickVoice } from './voice.ts';
 import { brand } from '../brand/brand';
 import { locale } from '../brand/locale';
 import { baseForms } from '../lib/lemma.ts';
-import { exampleBold, googleText, isShortQuery, myMemoryResult, tatoebaExamples } from '../lib/meanings.ts';
-import { newParent, parentChoice, savedTerm, sourceSentence } from '../lib/sheet.ts';
+import { exampleBold, googleText, isShortQuery, myMemoryResult, tatoebaExamples, type Example } from '../lib/meanings.ts';
+import { newParent, parentChoice, savedTerm, scrollFor, sourceSentence, spokenAt, wordParts, type WordPart } from '../lib/sheet.ts';
 import { LEARNING, MAX_PHRASE, isStatus, statusClass, type Status, type Term } from '../lib/terms.ts';
 import { celebrate, xpFeedback } from './celebrate.ts';
 
@@ -35,18 +35,15 @@ const levelOf = (q: string) => known(q)?.s ?? 1;
 
 /** Render text as one span per word so speech can highlight the word being spoken. */
 function words(el: HTMLElement, text: string, isBold: (t: string) => boolean = () => false) {
-  el.replaceChildren();
-  let pos = 0;
-  for (const part of text.split(/(\s+)/)) {
-    if (part.trim()) {
-      const w = document.createElement(isBold(part) ? 'b' : 'span');
-      w.className = 'tw';
-      w.dataset.start = String(pos);
-      w.textContent = part;
-      el.append(w);
-    } else el.append(part);
-    pos += part.length;
-  }
+  el.replaceChildren(...wordParts(text).map((p) => (p.word ? wordSpan(p, isBold(p.text)) : p.text)));
+}
+
+function wordSpan(p: WordPart, bold: boolean) {
+  const w = document.createElement(bold ? 'b' : 'span');
+  w.className = 'tw';
+  w.dataset.start = String(p.start);
+  w.textContent = p.text;
+  return w;
 }
 
 function say(text: string, el: HTMLElement) {
@@ -59,18 +56,21 @@ function say(text: string, el: HTMLElement) {
   const v = pickVoice();
   if (v) u.voice = v;
   const spans = [...el.querySelectorAll<HTMLElement>('.tw')];
-  const clear = () => spans.forEach((x) => x.classList.remove('now'));
-  u.onboundary = (e) => {
-    if (e.name && e.name !== 'word') return;
-    const cur = spans.filter((x) => Number(x.dataset.start) <= e.charIndex).pop();
-    clear();
-    cur?.classList.add('now');
-  };
-  u.onend = u.onerror = clear;
-  document.querySelectorAll('.tw.now').forEach((x) => x.classList.remove('now'));
+  u.onboundary = (e) => markSpoken(spans, e);
+  u.onend = u.onerror = unmark;
+  unmark();
   s.cancel();
   s.speak(u);
 }
+
+/** Marks the word being spoken (word boundaries only; some voices also report sentences). */
+function markSpoken(spans: HTMLElement[], e: SpeechSynthesisEvent) {
+  if (e.name && e.name !== 'word') return;
+  unmark();
+  spans[spokenAt(spans.map((x) => Number(x.dataset.start)), e.charIndex)]?.classList.add('now');
+}
+
+const unmark = () => document.querySelectorAll('.tw.now').forEach((x) => x.classList.remove('now'));
 
 // ---- translation & examples ---------------------------------------------
 
@@ -140,40 +140,41 @@ const TATOEBA = { vi: 'vie', id: 'ind' }[locale.translateTo];
 
 async function examples(q: string) {
   const box = $('ex');
-  const list = $('ex-list');
   box.hidden = true;
-  list.replaceChildren();
+  $('ex-list').replaceChildren();
   if (!isShortQuery(q)) return;
-  try {
-    const r = await fetch(
-      'https://api.tatoeba.org/unstable/sentences?lang=eng&sort=relevance&limit=20&trans:lang=' + TATOEBA + '&q=' + encodeURIComponent(q),
-    );
-    const items = tatoebaExamples((await r.json()).data, TATOEBA);
-    if (q !== current || !items.length) return;
-    const isBold = exampleBold(q);
-    for (const x of items) {
-      const row = document.createElement('div');
-      row.className = 'exi';
-      const en = document.createElement('div');
-      en.className = 'en';
-      words(en, x.en, isBold);
-      const b = document.createElement('button');
-      b.className = 'icon-btn small';
-      b.innerHTML = SPEAKER;
-      b.setAttribute('aria-label', config.i18n.listenSentence);
-      b.onclick = () => say(x.en, en);
-      const tr = document.createElement('div');
-      tr.className = 'tr';
-      tr.textContent = x.tr;
-      const col = document.createElement('div');
-      col.append(en, tr);
-      row.append(b, col);
-      list.append(row);
-    }
-    box.hidden = false;
-  } catch {
-    /* examples are optional */
-  }
+  const items = await tatoeba(q);
+  if (q !== current || !items.length) return;
+  const isBold = exampleBold(q);
+  $('ex-list').replaceChildren(...items.map((x) => exampleRow(x, isBold)));
+  box.hidden = false;
+}
+
+/** Example sentences for a word; none when Tatoeba is unreachable (examples are optional). */
+const tatoeba = (q: string): Promise<Example[]> =>
+  fetch('https://api.tatoeba.org/unstable/sentences?lang=eng&sort=relevance&limit=20&trans:lang=' + TATOEBA + '&q=' + encodeURIComponent(q))
+    .then(async (r) => tatoebaExamples((await r.json()).data, TATOEBA))
+    .catch(() => []);
+
+/** One example: a speaker button, the English sentence (looked-up words in bold) and its translation. */
+function exampleRow(x: Example, isBold: (t: string) => boolean) {
+  const row = document.createElement('div');
+  row.className = 'exi';
+  const en = document.createElement('div');
+  en.className = 'en';
+  words(en, x.en, isBold);
+  const b = document.createElement('button');
+  b.className = 'icon-btn small';
+  b.innerHTML = SPEAKER;
+  b.setAttribute('aria-label', config.i18n.listenSentence);
+  b.onclick = () => say(x.en, en);
+  const tr = document.createElement('div');
+  tr.className = 'tr';
+  tr.textContent = x.tr;
+  const col = document.createElement('div');
+  col.append(en, tr);
+  row.append(b, col);
+  return row;
 }
 
 // ---- statuses -------------------------------------------------------------
@@ -188,13 +189,19 @@ function paint(el: Element, s: number | undefined) {
 
 /** Recolour every occurrence of a term in the text. */
 function recolour(term: string, s: number | undefined) {
-  if (term.includes(' ')) {
-    document.querySelectorAll<HTMLElement>('#text .mw').forEach((m) => m.dataset.term === term && paint(m, s));
-    // A phrase saved just now has no .mw wrapper until reload: colour the selected words.
-    document.querySelectorAll('#text .w.sel').forEach((w) => !w.closest('.mw') && paint(w, s));
-  } else {
-    document.querySelectorAll('#text .w').forEach((w) => !w.closest('.mw') && w.textContent!.toLowerCase() === term && paint(w, s));
-  }
+  if (term.includes(' ')) recolourPhrase(term, s);
+  else recolourWord(term, s);
+}
+
+function recolourPhrase(term: string, s: number | undefined) {
+  document.querySelectorAll<HTMLElement>('#text .mw').forEach((m) => m.dataset.term === term && paint(m, s));
+  // A phrase saved just now has no .mw wrapper until reload: colour the selected words.
+  document.querySelectorAll('#text .w.sel').forEach((w) => !w.closest('.mw') && paint(w, s));
+}
+
+/** Single words outside saved phrases (a phrase keeps its own colour). */
+function recolourWord(term: string, s: number | undefined) {
+  document.querySelectorAll('#text .w').forEach((w) => !w.closest('.mw') && w.textContent!.toLowerCase() === term && paint(w, s));
 }
 
 // ---- parent terms (Lute) -----------------------------------------------------
@@ -364,8 +371,8 @@ function keepVisible(a: HTMLElement, b: HTMLElement) {
   const header = document.querySelector('.top')?.getBoundingClientRect().bottom ?? 0;
   // Examples load a moment later and grow the sheet, so keep clear of its full height (56vh).
   const limit = innerHeight - (side.matches ? 0 : Math.max(dockHeight(), innerHeight * 0.56)) - 16;
-  if (bottom > limit) scrollBy({ top: Math.min(bottom - limit, top - header - 16), behavior: 'smooth' });
-  else if (top < header + 8) scrollBy({ top: top - header - 16, behavior: 'smooth' });
+  const by = scrollFor(top, bottom, header, limit);
+  if (by) scrollBy({ top: by, behavior: 'smooth' });
 }
 
 /** A tap inside a saved phrase opens the whole phrase, as in Lute. */

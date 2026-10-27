@@ -420,3 +420,23 @@ test('voices: English only, US first, offline first; the saved choice, else the 
   assert.equal(chooseVoice([v('Kate', 'en-GB', false)], '')?.name, 'Kate', 'then any English voice');
   assert.equal(chooseVoice([], ''), undefined);
 });
+
+import { wordParts, spokenAt, scrollFor } from '../src/lib/sheet.ts';
+
+test('speech highlighting: word positions and the word being spoken', () => {
+  assert.deepEqual(wordParts('Hi  there!'), [
+    { text: 'Hi', start: 0, word: true }, { text: '  ', start: 2, word: false }, { text: 'there!', start: 4, word: true },
+  ]);
+  assert.deepEqual(wordParts(''), []);
+  const starts = [0, 4, 10];
+  assert.deepEqual([0, 3, 4, 9, 10, 99].map((i) => spokenAt(starts, i)), [0, 0, 1, 1, 2, 2]);
+  assert.equal(spokenAt([5], 2), -1, 'before the first word');
+});
+
+test('keeping the selection visible: scroll up past the panel, or down from under the header', () => {
+  // top/bottom of the selection, header bottom, lowest visible line above the panel
+  assert.equal(scrollFor(300, 340, 60, 500), 0, 'already visible');
+  assert.equal(scrollFor(600, 640, 60, 500), 140, 'hidden by the panel: scroll it above');
+  assert.equal(scrollFor(200, 900, 60, 500), 124, 'never scroll its top under the header');
+  assert.equal(scrollFor(50, 90, 60, 500), -26, 'under the header: scroll back');
+});
