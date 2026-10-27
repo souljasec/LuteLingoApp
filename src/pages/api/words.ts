@@ -2,11 +2,10 @@ import type { APIRoute } from 'astro';
 import { env } from 'cloudflare:workers';
 import { dueFor } from '../../lib/srs.ts';
 import { XP, award } from '../../lib/xp.ts';
+import { IGNORED, MAX_PHRASE, isStatus } from '../../lib/terms.ts';
 
 const json = (data: unknown, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json' } });
-const STATUSES = new Set([1, 2, 3, 4, 5, 98, 99]);
-export const MAX_PHRASE = 5; // words; longer selections are sentences, not vocabulary
 const clean = (s: unknown) => String(s ?? '').replace(/\s+/g, ' ').trim().toLowerCase().slice(0, 200);
 
 /**
@@ -25,7 +24,7 @@ export const POST: APIRoute = async ({ request, locals }) => {
   const sentence = String(body.sentence ?? '').replace(/\s+/g, ' ').trim().slice(0, 300);
   const status = Number(body.status ?? 1);
   const parent = body.parent === undefined ? null : clean(body.parent);
-  if (!term || !STATUSES.has(status) || parent === term) return json({ error: 'invalid' }, 400);
+  if (!term || !isStatus(status) || parent === term) return json({ error: 'invalid' }, 400);
   const now = Math.floor(Date.now() / 1000);
   const exists = env.DB.prepare('SELECT 1 FROM saved_words WHERE user_id = ? AND term = ?').bind(user.id, term);
   // New phrases are capped; long terms saved before the cap can still be changed or removed.
@@ -56,8 +55,8 @@ export const POST: APIRoute = async ({ request, locals }) => {
   }
   const results = await env.DB.batch<{ t: string; s: number }>(stmts);
   const existed = results[0].results.length > 0;
-  // Ignoring a word (98) is not learning it.
-  const xp = await award(user, existed || status === 98 ? 0 : XP.newWord, 'words');
+  // Ignoring a word is not learning it.
+  const xp = await award(user, existed || status === IGNORED ? 0 : XP.newWord, 'words');
   return json({ ok: true, parent: parent ? (results.at(-1)?.results[0] ?? null) : null, xp });
 };
 

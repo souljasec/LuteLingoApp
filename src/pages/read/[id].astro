@@ -3,6 +3,7 @@ import App from '../../layouts/App.astro';
 import Icon from '../../components/Icon.astro';
 import { canEdit, getProgress, getText, markOpened, termsFor } from '../../lib/texts.ts';
 import { findPhrases, parse, termOf, wordsOf, type Token } from '../../lib/tokenize.ts';
+import { IGNORED, KNOWN, LEARNING, statusClass } from '../../lib/terms.ts';
 
 const { t } = Astro.locals;
 const user = Astro.locals.user!;
@@ -15,11 +16,7 @@ const [terms, progress] = await Promise.all([termsFor(user, wordsOf(paras)), get
 const finished = !!progress?.finished_at;
 const phrases = new Set(Object.keys(terms).filter((k) => k.includes(' ')));
 
-// Status → class: new words blue, learning 1-5 coloured, known (99) and ignored (98) plain.
-const cls = (term: string) => {
-  const s = terms[term]?.s;
-  return s === undefined ? 'st0' : s <= 5 ? `st${s}` : '';
-};
+const cls = (term: string) => statusClass(terms[term]?.s);
 
 // A sentence becomes a list of items: single tokens, or a saved phrase holding its tokens.
 type Item = { tok: Token } | { phrase: string; toks: Token[] };
@@ -46,7 +43,6 @@ const config = {
     textDone: t('xp.textDone'),
   },
 };
-const statuses = [1, 2, 3, 4, 5] as const;
 ---
 
 <App title={text.title} back="/">
@@ -115,13 +111,13 @@ const statuses = [1, 2, 3, 4, 5] as const;
 
       <div id="status-box" hidden>
         <div class="status" role="group" aria-label={t('st.learning')}>
-          {statuses.map((n) => <button data-s={n} class={`st${n}`}>{n}</button>)}
-          <button data-s="99" class="known"><Icon name="check" size={18} /> {t('st.known')}</button>
+          {LEARNING.map((n) => <button data-s={n} class={`st${n}`}>{n}</button>)}
+          <button data-s={KNOWN} class="known"><Icon name="check" size={18} /> {t('st.known')}</button>
         </div>
         <div class="status-sub">
           <span class="hint">{t('st.hint')}</span>
           <span>
-            <button data-s="98" class="link">{t('st.ignore')}</button>
+            <button data-s={IGNORED} class="link">{t('st.ignore')}</button>
             <button id="remove" class="link" hidden>{t('st.remove')}</button>
           </span>
         </div>

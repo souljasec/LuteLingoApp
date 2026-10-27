@@ -2,6 +2,7 @@
 import { env } from 'cloudflare:workers';
 import App from '../layouts/App.astro';
 import Icon from '../components/Icon.astro';
+import { statusSql } from '../lib/terms.ts';
 
 const { t } = Astro.locals;
 const user = Astro.locals.user!;
@@ -10,7 +11,7 @@ const user = Astro.locals.user!;
 const { results: cards } = await env.DB.prepare(
   `SELECT w.term, w.translation, w.status, w.parent, w.sentence, p.translation AS parent_t
    FROM saved_words w LEFT JOIN saved_words p ON p.user_id = w.user_id AND p.term = w.parent AND w.parent != ''
-   WHERE w.user_id = ? AND w.status BETWEEN 1 AND 5 AND w.due_at <= unixepoch()
+   WHERE w.user_id = ? AND ${statusSql('w.status').learning} AND w.due_at <= unixepoch()
    ORDER BY w.due_at, w.status LIMIT 20`,
 )
   .bind(user.id)

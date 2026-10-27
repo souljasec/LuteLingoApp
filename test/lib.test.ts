@@ -107,3 +107,14 @@ test('gapSplit blanks the whole word only, keeping its capitals', () => {
   assert.equal(gapSplit('The cat sat.', 'a'), null);
   assert.deepEqual(gapSplit('Cost (a lot)?', 'lot)?'), ['Cost (a ', 'lot)?', ''], 'regex characters are literal');
 });
+
+import { KNOWN, IGNORED, LEARNING, isStatus, statusClass, statusSql } from '../src/lib/terms.ts';
+
+test('word levels: valid statuses, reader colours, SQL conditions', () => {
+  assert.deepEqual([...LEARNING, IGNORED, KNOWN].map(isStatus), [true, true, true, true, true, true, true]);
+  assert.deepEqual([0, 6, 97, 100, '1', undefined].map(isStatus), [false, false, false, false, false, false]);
+  assert.deepEqual([undefined, 1, 5, IGNORED, KNOWN].map(statusClass), ['st0', 'st1', 'st5', '', '']);
+  const w = statusSql('w.status');
+  assert.deepEqual([w.learning, w.known, w.notIgnored], ['w.status BETWEEN 1 AND 5', 'w.status = 99', 'w.status != 98']);
+  assert.equal(statusSql().known, 'status = 99');
+});

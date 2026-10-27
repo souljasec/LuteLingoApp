@@ -2,6 +2,9 @@
 import { env } from 'cloudflare:workers';
 import { streakFrom, twoWeeks, localDay, weekStart } from './xp-dates.ts';
 import { locale } from '../brand/locale.ts';
+import { statusSql } from './terms.ts';
+
+const W = statusSql('w.status');
 
 /** Unix seconds of a school date at 00:00. */
 const localMidnight = (day: string) => Date.parse(day + 'T00:00:00Z') / 1000 - locale.utcOffset * 3600;
@@ -27,11 +30,11 @@ export async function classInsights(classId: number) {
   const [students, activity, topTexts] = await env.DB.batch<any>([
     env.DB.prepare(
       `SELECT u.id, u.name, u.last_active_at,
-         (SELECT count(*) FROM saved_words w WHERE w.user_id = u.id AND w.status = 99) AS known,
-         (SELECT count(*) FROM saved_words w WHERE w.user_id = u.id AND w.status BETWEEN 1 AND 5) AS learning,
+         (SELECT count(*) FROM saved_words w WHERE w.user_id = u.id AND ${W.known}) AS known,
+         (SELECT count(*) FROM saved_words w WHERE w.user_id = u.id AND ${W.learning}) AS learning,
          (SELECT count(*) FROM progress p WHERE p.user_id = u.id AND p.finished_at IS NOT NULL) AS finished,
          (SELECT coalesce(sum(a.xp), 0) FROM activity a WHERE a.user_id = u.id AND a.day >= ?2) AS xp_week,
-         (SELECT count(*) FROM saved_words w WHERE w.user_id = u.id AND w.status != 98 AND w.created_at >= ?3) AS words_week,
+         (SELECT count(*) FROM saved_words w WHERE w.user_id = u.id AND ${W.notIgnored} AND w.created_at >= ?3) AS words_week,
          (SELECT count(*) FROM progress p WHERE p.user_id = u.id AND p.finished_at >= ?3) AS finished_week
        FROM class_members m JOIN users u ON u.id = m.user_id WHERE m.class_id = ?1`,
     ).bind(classId, week, weekTs),

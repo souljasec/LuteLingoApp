@@ -1,5 +1,8 @@
 import { env } from 'cloudflare:workers';
 import { INTL, type Lang } from './i18n.ts';
+import { statusSql } from './terms.ts';
+
+const W = statusSql('w.status');
 
 export type StudentRow = {
   id: number;
@@ -19,8 +22,8 @@ const STUDENTS = `
   SELECT u.id, u.name, u.email, u.role, u.last_active_at, u.created_at,
     (SELECT count(*) FROM progress p WHERE p.user_id = u.id) AS opened,
     (SELECT count(*) FROM progress p WHERE p.user_id = u.id AND p.finished_at IS NOT NULL) AS finished,
-    (SELECT count(*) FROM saved_words w WHERE w.user_id = u.id AND w.status = 99) AS known,
-    (SELECT count(*) FROM saved_words w WHERE w.user_id = u.id AND w.status BETWEEN 1 AND 5) AS learning
+    (SELECT count(*) FROM saved_words w WHERE w.user_id = u.id AND ${W.known}) AS known,
+    (SELECT count(*) FROM saved_words w WHERE w.user_id = u.id AND ${W.learning}) AS learning
   FROM users u`;
 
 export async function studentsInClass(classId: number) {

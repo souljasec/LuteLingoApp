@@ -1,13 +1,15 @@
 // Reader: word/phrase selection, Lute-style term statuses, and the translation sheet (translation,
 // pronunciation with word highlighting, Tatoeba examples). Sheet ported from
 // lute-custom/custom/vi.html; selection and statuses follow Lute: long-press the first word, tap
-// the last; statuses 1-5 learning, 99 known, 98 ignored, words without a status are new.
+// the last; statuses in lib/terms.ts, words without a status are new.
 // Text from outside sources is only ever set via textContent.
 
 import { pickVoice } from './voice.ts';
 import { brand } from '../brand/brand';
 import { locale } from '../brand/locale';
 import { baseForms } from '../lib/lemma.ts';
+import { LEARNING, MAX_PHRASE, isStatus, statusClass, type Status } from '../lib/terms.ts';
+import type { Term } from '../lib/texts.ts';
 import { celebrate, xpFeedback } from './celebrate.ts';
 
 const $ = (id: string) => document.getElementById(id)!;
@@ -15,7 +17,7 @@ const SPEAKER = $('say').innerHTML; // reuse the server-rendered icon for exampl
 const config = JSON.parse($('sheet').dataset.config!) as {
   rate: number;
   textId: number;
-  terms: Record<string, { t: string; s: number; p?: string }>; // the user's terms in this text (+ their parents)
+  terms: Record<string, Term>; // the user's terms in this text (+ their parents)
   i18n: Record<'failed' | 'other' | 'listenSentence' | 'textDone', string>;
 };
 let current = '';
@@ -154,13 +156,11 @@ async function examples(q: string) {
 
 // ---- statuses -------------------------------------------------------------
 
-const STATUS_CLASSES = ['st0', 'st1', 'st2', 'st3', 'st4', 'st5'];
-/** Words without a status are new (blue); 1-5 coloured; known/ignored plain. */
-const classFor = (s: number | undefined) => (s === undefined ? 'st0' : s <= 5 ? `st${s}` : '');
+const STATUS_CLASSES = ['st0', ...LEARNING.map((n) => `st${n}`)];
 
 function paint(el: Element, s: number | undefined) {
   el.classList.remove(...STATUS_CLASSES);
-  const c = classFor(s);
+  const c = statusClass(s);
   if (c) el.classList.add(c);
 }
 
@@ -262,13 +262,13 @@ $('parent-form').addEventListener('submit', (e) => {
 function showStatus(q: string) {
   const term = q.toLowerCase();
   const box = $('status-box');
-  box.hidden = acrossSentences || q.split(' ').length > 5; // sentences are not vocabulary (MAX_PHRASE in api/words)
+  box.hidden = acrossSentences || q.split(' ').length > MAX_PHRASE; // sentences are not vocabulary
   const s = config.terms[term]?.s;
   box.querySelectorAll<HTMLElement>('[data-s]').forEach((b) => b.setAttribute('aria-pressed', String(Number(b.dataset.s) === s)));
   $('remove').hidden = s === undefined;
 }
 
-async function setStatus(s: number | null) {
+async function setStatus(s: Status | null) {
   const term = current.toLowerCase();
   const r =
     s === null
@@ -287,8 +287,8 @@ async function setStatus(s: number | null) {
 }
 
 $('status-box').addEventListener('click', (e) => {
-  const b = (e.target as HTMLElement).closest<HTMLElement>('[data-s]');
-  if (b) setStatus(Number(b.dataset.s));
+  const s = Number((e.target as HTMLElement).closest<HTMLElement>('[data-s]')?.dataset.s);
+  if (isStatus(s)) setStatus(s);
 });
 $('remove').addEventListener('click', () => setStatus(null));
 

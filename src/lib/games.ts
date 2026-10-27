@@ -1,5 +1,6 @@
 import { env } from 'cloudflare:workers';
 import { gapSplit } from './tokenize.ts';
+import { statusSql } from './terms.ts';
 
 export const GAMES = ['match', 'listen', 'fill'] as const;
 export type Game = (typeof GAMES)[number];
@@ -14,7 +15,7 @@ export type GameWord = { t: string; m: string; s?: [string, string, string] };
  */
 export async function gameWords(user: { id: number }, game: Game): Promise<GameWord[]> {
   const { results } = await env.DB.prepare(
-    'SELECT term, translation, sentence FROM saved_words WHERE user_id = ? AND status != 98 ORDER BY random() LIMIT 80',
+    `SELECT term, translation, sentence FROM saved_words WHERE user_id = ? AND ${statusSql().notIgnored} ORDER BY random() LIMIT 80`,
   )
     .bind(user.id)
     .all<{ term: string; translation: string; sentence: string }>();

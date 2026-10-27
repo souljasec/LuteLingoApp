@@ -5,6 +5,7 @@ import Icon from '../components/Icon.astro';
 import { termCounts } from '../lib/texts.ts';
 import { INTL } from '../lib/i18n.ts';
 import { TIME_ZONE } from '../lib/xp-dates.ts';
+import { statusSql } from '../lib/terms.ts';
 
 const { t } = Astro.locals;
 const user = Astro.locals.user!;
@@ -17,10 +18,10 @@ if (Astro.request.method === 'POST') {
   return Astro.redirect('/words');
 }
 
-// Learning terms (1-5), newest level first, like Lute's term list filtered to "learning".
+// Learning terms, newest level first, like Lute's term list filtered to "learning".
 const [{ results: words }, counts] = await Promise.all([
   env.DB.prepare(
-    'SELECT term, translation, status, parent FROM saved_words WHERE user_id = ? AND status BETWEEN 1 AND 5 ORDER BY status, created_at DESC',
+    `SELECT term, translation, status, parent FROM saved_words WHERE user_id = ? AND ${statusSql().learning} ORDER BY status, created_at DESC`,
   )
     .bind(user.id)
     .all<{ term: string; translation: string; status: number; parent: string }>(),
@@ -28,7 +29,7 @@ const [{ results: words }, counts] = await Promise.all([
 ]);
 // When nothing is due, say when the next card is (flashcards should never be hard to find).
 const next = (counts.due ?? 0) > 0 ? null : await env.DB.prepare(
-  'SELECT min(due_at) AS at FROM saved_words WHERE user_id = ? AND status BETWEEN 1 AND 5',
+  `SELECT min(due_at) AS at FROM saved_words WHERE user_id = ? AND ${statusSql().learning}`,
 ).bind(user.id).first<{ at: number | null }>();
 const nextLabel = next?.at
   ? new Intl.DateTimeFormat(INTL[Astro.locals.lang], { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: TIME_ZONE }).format(next.at * 1000)

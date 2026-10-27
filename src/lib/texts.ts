@@ -1,4 +1,7 @@
 import { env } from 'cloudflare:workers';
+import { statusSql, type Status } from './terms.ts';
+
+const S = statusSql();
 
 export type TextRow = { id: number; title: string; body: string; owner_id: number | null; visibility: string; category: string; level: number };
 
@@ -74,7 +77,7 @@ export async function getProgress(user: User, textId: number) {
     .first<{ finished_at: number | null }>();
 }
 
-export type Term = { t: string; s: number; p?: string }; // translation, status (1-5, 98 ignored, 99 known), parent term
+export type Term = { t: string; s: Status; p?: string }; // translation, status, parent term
 
 /**
  * The user's terms relevant to a text: every single word that occurs in it, plus all their
@@ -83,7 +86,7 @@ export type Term = { t: string; s: number; p?: string }; // translation, status 
 export async function termsFor(user: User, words: string[]) {
   const out: Record<string, Term> = {};
   const unique = [...new Set(words)];
-  type Row = { term: string; translation: string; status: number; parent: string };
+  type Row = { term: string; translation: string; status: Status; parent: string };
   const add = ({ results }: { results: Row[] }) => {
     for (const r of results) out[r.term] = r.parent ? { t: r.translation, s: r.status, p: r.parent } : { t: r.translation, s: r.status };
   };
@@ -113,11 +116,11 @@ export async function termsFor(user: User, words: string[]) {
   return out;
 }
 
-/** Counts for the stats header: known (99), learning (1-5), and learning terms due for review. */
+/** Counts for the stats header: known, learning, and learning terms due for review. */
 export async function termCounts(user: User) {
   return (await env.DB.prepare(
-    `SELECT sum(status = 99) AS known, sum(status BETWEEN 1 AND 5) AS learning,
-       sum(status BETWEEN 1 AND 5 AND due_at <= unixepoch()) AS due
+    `SELECT sum(${S.known}) AS known, sum(${S.learning}) AS learning,
+       sum(${S.learning} AND due_at <= unixepoch()) AS due
      FROM saved_words WHERE user_id = ?`,
   )
     .bind(user.id)
