@@ -90,7 +90,7 @@ Status: ✅ mitigated and tested · ⚠️ accepted risk (documented) · 🔧 fi
 
 | ID | Threat | Control | Test | Status |
 |---|---|---|---|---|
-| I1 | Invalid statuses, self-parent links, huge terms | Status whitelist, parent ≠ term, terms ≤ 200 chars, new phrases ≤ 5 words, sentences ≤ 300 chars, translations ≤ 500; theme whitelist | I1, P1, T1 | ✅ |
+| I1 | Invalid statuses, self-parent links, huge terms | Status whitelist, parent ≠ term, terms ≤ 200 chars, new phrases ≤ 5 words, sentences ≤ 300 chars, translations ≤ 500; every account setting must be one of its listed choices (`parsePrefs` in `src/lib/prefs.ts`) | I1, P1, T1 | ✅ |
 | I2 | Duplicate sign-ups racing, invalid passwords | `INSERT OR IGNORE` + friendly message; length checks | I2 | 🔧 |
 | D1 | Translation API used as a free proxy | Login required; query ≤ 500 chars; only short terms cached | A1 | ✅ |
 | D2 | Storage abuse via own texts | ≤ 200 own texts per student, ≤ 20,000 characters each | D2 | 🔧 |

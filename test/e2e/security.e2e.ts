@@ -433,6 +433,9 @@ describe('security', { concurrency: false }, () => {
     assert.match(await alice.text('/'), /data-theme="light"/);
     await bob.req('/account', { form: { ...form, theme: 'neon' } });
     assert.match(await bob.text('/'), /data-theme="dim"/, 'unknown theme ignored');
+    const odd = await bob.req('/account', { form: { ...form, speech_rate: 'toString', theme: 'light' } });
+    assert.equal(odd.status, 200, 'a built-in property name is refused, not a server error');
+    assert.match(await bob.text('/'), /data-theme="dim"/, 'nothing saved');
   });
 
   test('K1 a category typed in other capitals reuses the existing spelling', { skip: !up && 'dev server not running' }, async () => {

@@ -1,16 +1,12 @@
 ---
 import { env } from 'cloudflare:workers';
 import App from '../layouts/App.astro';
-import { LANGS, isLang } from '../lib/i18n.ts';
+import { LANGS } from '../lib/i18n.ts';
+import { GOALS, RATES, SIZES, THEMES, parsePrefs } from '../lib/prefs.ts';
 import { rateLimited } from '../lib/auth.ts';
 
 const user = Astro.locals.user!;
 const { t } = Astro.locals;
-
-const SIZES = ['small', 'medium', 'large'] as const;
-const RATES = { slow: 0.7, normal: 0.9 } as const;
-const GOALS = [10, 20, 30, 50] as const;
-const THEMES = ['light', 'dim'] as const;
 
 let joined = '';
 let joinError = '';
@@ -26,15 +22,10 @@ if (Astro.request.method === 'POST' && Astro.url.searchParams.has('join')) {
     joined = c.name;
   }
 } else if (Astro.request.method === 'POST') {
-  const f = await Astro.request.formData();
-  const lang = f.get('ui_lang');
-  const size = f.get('text_size');
-  const rate = RATES[f.get('speech_rate') as keyof typeof RATES];
-  const goal = Number(f.get('daily_goal'));
-  const theme = f.get('theme');
-  if (isLang(lang) && SIZES.includes(size as any) && rate && GOALS.includes(goal as any) && THEMES.includes(theme as any)) {
+  const p = parsePrefs(await Astro.request.formData());
+  if (p) {
     await env.DB.prepare('UPDATE users SET ui_lang = ?, text_size = ?, speech_rate = ?, daily_goal = ?, theme = ? WHERE id = ?')
-      .bind(lang, size, rate, goal, theme, user.id)
+      .bind(p.ui_lang, p.text_size, p.speech_rate, p.daily_goal, p.theme, user.id)
       .run();
     // Redirect so the whole page (tabs, title) re-renders in the new language.
     return Astro.redirect('/account?saved=1');

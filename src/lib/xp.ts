@@ -8,7 +8,6 @@ export const XP = { newWord: 1, reviewGood: 2, reviewAgain: 1, textFinished: 10,
 /** Daily XP caps per source (anti-farming; see THREATS.md X1-X3). */
 export const CAPS = { words: 50, reviews: 100, texts: 50, games: 30 } as const;
 export type Source = keyof typeof CAPS;
-export const GOALS = [10, 20, 30, 50] as const;
 export type Today = { xp: number; goal: number; streak: number };
 
 export async function today(user: { id: number }): Promise<Today> {

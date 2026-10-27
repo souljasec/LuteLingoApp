@@ -118,3 +118,15 @@ test('word levels: valid statuses, reader colours, SQL conditions', () => {
   assert.deepEqual([w.learning, w.known, w.notIgnored], ['w.status BETWEEN 1 AND 5', 'w.status = 99', 'w.status != 98']);
   assert.equal(statusSql().known, 'status = 99');
 });
+
+import { parsePrefs } from '../src/lib/prefs.ts';
+
+test('settings form: only listed choices are accepted', () => {
+  const form = (o: Record<string, string>) => new Map(Object.entries(o));
+  const ok = { ui_lang: 'en', text_size: 'large', speech_rate: 'slow', daily_goal: '30', theme: 'dim' };
+  assert.deepEqual(parsePrefs(form(ok)), { ui_lang: 'en', text_size: 'large', speech_rate: 0.7, daily_goal: 30, theme: 'dim' });
+  for (const [k, bad] of [['ui_lang', 'xx'], ['text_size', 'huge'], ['speech_rate', '2'], ['speech_rate', 'toString'], ['daily_goal', '25'], ['theme', 'neon']]) {
+    assert.equal(parsePrefs(form({ ...ok, [k]: bad })), null, `${k}=${bad} refused`);
+  }
+  assert.equal(parsePrefs(form({})), null);
+});

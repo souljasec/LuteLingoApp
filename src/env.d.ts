@@ -8,9 +8,9 @@ declare global {
     name: string;
     role: 'student' | 'admin';
     ui_lang: string;
-    text_size: 'small' | 'medium' | 'large';
+    text_size: import('./lib/prefs.ts').Size;
     speech_rate: number;
-    theme: 'light' | 'dim';
+    theme: import('./lib/prefs.ts').Theme;
   };
 
   // Bindings from wrangler.jsonc, read via `import { env } from 'cloudflare:workers'`.
