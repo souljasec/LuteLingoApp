@@ -40,7 +40,7 @@ Status: ✅ mitigated and tested · ⚠️ accepted risk (documented) · 🔧 fi
 | A4 | Stolen or reused session after logout | Sessions stored server-side as SHA-256 of the token; logout deletes it; password reset deletes all of the user's sessions | A4, A3 | ✅ |
 | A5 | Session theft via script or cross-site requests | Cookie `HttpOnly; SameSite=Lax; Path=/`, `Secure` on HTTPS | A5 | ✅ |
 | A6 | Password database leak | PBKDF2-SHA256, 100k iterations (Workers maximum), random salt | unit: password hash | ✅ |
-| A7 | Sign-up reveals that an email is registered | Needed to tell students to log in instead | — | ⚠️ |
+| A7 | Sign-up reveals that an email is registered (anyone can type an address and see "already exists"); login also answers faster for unknown emails, since no password is checked | Accepted while no email service is connected: the message is the only way to tell a student to log in instead. **When email is added:** sign-up answers "check your email" for every address, and only the inbox owner learns whether an account exists; login runs a dummy password check for unknown emails | — | ⚠️ |
 | A8 | Very long passwords cost CPU | Max 200 characters (sign-up and login) | I2 | 🔧 |
 
 ### Cross-site requests
